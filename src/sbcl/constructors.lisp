@@ -193,6 +193,9 @@
     (uint (single-from-float4! (float4-from-p128! (uint4-from-uint! x))))
     (p128 (single-from-float4! (float4-from-p128! x)))))
 
+(definline float! (x)
+  (single! x))
+
 (definline double! (x)
   (etypecase x
     (double x)
