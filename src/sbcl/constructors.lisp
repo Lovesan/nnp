@@ -759,4 +759,21 @@
   (def long2)
   (def ulong2))
 
+;; extract
+
+(macrolet ((def (type)
+             (let* ((name (symbolicate type '#:-extract))
+                    (vop-name (symbolicate% name)))
+               `(progn (defvop ,vop-name ((v ,type) (n imm2))
+                           ((rv uint))
+                           ()
+                         (inst vextractps rv v n))
+                       (definline ,name (v n)
+                         (declare (type imm2 n))
+                         (with-primitive-argument (n imm2)
+                           (,vop-name (,type v) n)))))))
+  (def float4)
+  (def int4)
+  (def uint4))
+
 ;;; vim: ft=lisp et
