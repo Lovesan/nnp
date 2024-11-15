@@ -407,9 +407,10 @@
              `(defvop ,(symbolicate% type '#:-permute)
                   ((v ,type :target rv)
                    (mask imm8))
-                  ((rv ,type))
-                  ()
-                ;; VSHUFPD does weird things. Maybe a bug in SBCL?
+                ((rv ,type))
+                ()
+                ;;  VPSHUFD is bugged in the current SBCL.
+                ;;  The bug has been fixed but the fix is not released yet.
                 (inst vpermilps rv v mask))))
   (def float4)
   (def int4)
