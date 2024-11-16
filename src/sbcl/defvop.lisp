@@ -94,7 +94,8 @@
                                  ;; wrapper is required for constant folding
                                  (wrapper foldable)
                                  (translate nil translatep)
-                                 (cost 1))
+                                 (cost 1)
+                                 note)
       (ensure-list name-and-options)
     `(progn
        (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -111,6 +112,7 @@
            (:arg-types ,@(defvop-args->vop-types args))
            ,@(when (defvop-args-has-immediates-p args)
                `((:info ,@(defvop-args->vop-info args))))
+           ,@(when note `((:note ,note)))
            (:results ,@(defvop-results->vop-results results))
            (:result-types ,@(defvop-args->vop-types results))
            ,@(defvop-temp->vop-temp temp)
