@@ -48,6 +48,7 @@
                     (load-name (symbolicate type '#:-load))
                     (load-vop-name (symbolicate% load-name))
                     (load-vop-const-name (symbolicate load-vop-name '#:-const))
+                    (aref-name (symbolicate type '#:-aref))
                     (rma-name (symbolicate type '#:-row-major-aref))
                     (mem-ref-name (symbolicate type '#:-mem-ref))
                     (mem-ref-vop-name (symbolicate% mem-ref-name))
@@ -67,6 +68,7 @@
                     (ntload-name (symbolicate type '#:-ntload))
                     (ntload-vop-name (symbolicate% ntload-name))
                     (ntload-vop-const-name (symbolicate ntload-vop-name '#:-const))
+                    (ntaref-name (symbolicate type '#:-non-temporal-aref))
                     (ntmem-ref-name (symbolicate type '#:-non-temporal-mem-ref))
                     (ntmem-ref-vop-name (symbolicate% ntmem-ref-name))
                     (ntmem-ref-vop-const-name (symbolicate ntmem-ref-vop-name '#:-const))
@@ -122,6 +124,23 @@
                     (declare (type (array ,eltype) array)
                              (type index index))
                     (,load-name array (* index ,simd-width)))
+                  (defun ,aref-name (array &rest subscripts)
+                    (declare (type (array ,eltype) array))
+                    (,load-name array (apply #'array-row-major-simd-index
+                                             array
+                                             ,simd-width
+                                             subscripts)))
+                  (define-compiler-macro ,aref-name (array &rest subscripts)
+                    (once-only (array)
+                      (with-gensyms (index)
+                        (let* ((subscript-bindings
+                                 (loop :for subscript :in subscripts
+                                       :collect `(,(gensym (string '#:i)) ,subscript)))
+                               (subscripts (mapcar #'first subscript-bindings)))
+                          `(let ,subscript-bindings
+                             (with-row-major-simd-index
+                                 (,index ,array ,',simd-width ,@subscripts)
+                               (,',load-name ,array ,index)))))))
 
                   ;; mem-ref
                   (defvop (,mem-ref-vop-name :pure nil :cost 2)
@@ -189,6 +208,23 @@
                     (declare (type (array ,eltype) array)
                              (type index index))
                     (,store-name new-value array (* index ,simd-width)))
+                  (defun (setf ,aref-name) (new-value array &rest subscripts)
+                    (declare (type (array ,eltype) array))
+                    (,store-name new-value array (apply #'array-row-major-simd-index
+                                                        array
+                                                        ,simd-width
+                                                        subscripts)))
+                  (define-compiler-macro (setf ,aref-name) (new-value array &rest subscripts)
+                    (once-only (array)
+                      (with-gensyms (index)
+                        (let* ((subscript-bindings
+                                 (loop :for subscript :in subscripts
+                                       :collect `(,(gensym (string '#:i)) ,subscript)))
+                               (subscripts (mapcar #'first subscript-bindings)))
+                          `(let ,subscript-bindings
+                             (with-row-major-simd-index
+                                 (,index ,array ,',simd-width ,@subscripts)
+                               (,',store-name ,new-value ,array ,index)))))))
 
                   ;; (setf mem-ref)
                   (defvop (,mem-set-vop-name :pure nil :cost 2)
@@ -260,6 +296,23 @@
                     (declare (type (array ,eltype) array)
                              (type index index))
                     (,ntload-name array (* index ,simd-width)))
+                  (defun ,ntaref-name (array &rest subscripts)
+                    (declare (type (array ,eltype) array))
+                    (,ntload-name array (apply #'array-row-major-simd-index
+                                               array
+                                               ,simd-width
+                                               subscripts)))
+                  (define-compiler-macro ,ntaref-name (array &rest subscripts)
+                    (once-only (array)
+                      (with-gensyms (index)
+                        (let* ((subscript-bindings
+                                 (loop :for subscript :in subscripts
+                                       :collect `(,(gensym (string '#:i)) ,subscript)))
+                               (subscripts (mapcar #'first subscript-bindings)))
+                          `(let ,subscript-bindings
+                             (with-row-major-simd-index
+                                 (,index ,array ,',simd-width ,@subscripts)
+                               (,',ntload-name ,array ,index)))))))
 
                   ;; NT mem-ref
                   (defvop (,ntmem-ref-vop-name :pure nil :cost 2)
@@ -327,6 +380,23 @@
                     (declare (type (array ,eltype) array)
                              (type index index))
                     (,ntstore-name new-value array (* index ,simd-width)))
+                  (defun (setf ,ntaref-name) (new-value array &rest subscripts)
+                    (declare (type (array ,eltype) array))
+                    (,ntstore-name new-value array (apply #'array-row-major-simd-index
+                                                          array
+                                                          ,simd-width
+                                                          subscripts)))
+                  (define-compiler-macro (setf ,ntaref-name) (new-value array &rest subscripts)
+                    (once-only (array)
+                      (with-gensyms (index)
+                        (let* ((subscript-bindings
+                                 (loop :for subscript :in subscripts
+                                       :collect `(,(gensym (string '#:i)) ,subscript)))
+                               (subscripts (mapcar #'first subscript-bindings)))
+                          `(let ,subscript-bindings
+                             (with-row-major-simd-index
+                                 (,index ,array ,',simd-width ,@subscripts)
+                               (,',ntstore-name ,new-value ,array ,index)))))))
 
                   ;; NT (setf mem-ref)
                   (defvop (,ntmem-set-vop-name :pure nil :cost 2)
