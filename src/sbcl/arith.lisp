@@ -446,4 +446,38 @@
   (def double2 (double2! (int4 -1)) double2-and)
   (def int4 (int4 -1) int4-and))
 
+(defvop %float4-truncate ((v float4 :target rv))
+    ((rv int4))
+    ()
+  (inst vcvttps2dq rv v))
+
+(definline float4-truncate (v)
+  (%float4-truncate (float4 v)))
+
+(defvop %float4-round ((v float4 :target rv) (rounding imm2))
+    ((rv int4))
+    ((tmp float4))
+  (inst vroundps tmp v rounding)
+  (inst vcvtps2dq rv tmp))
+
+(macrolet ((def (name mask)
+             `(definline ,name (v)
+                (%float4-round (float4 v) ,mask))))
+  (def float4-round #x0)
+  (def float4-floor #x1)
+  (def float4-ceiling #x2))
+
+(defvop %double2-round ((v double2 :target rv) (rounding imm2))
+    ((rv double2))
+    ()
+  (inst vroundpd rv v rounding))
+
+(macrolet ((def (name mask)
+             `(definline ,name (v)
+                (long2-from-double2 (%double2-round (double2 v) ,mask)))))
+  (def double2-round #x0)
+  (def double2-floor #x1)
+  (def double2-ceiling #x2)
+  (def double2-truncate #x3))
+
 ;;; vim: ft=lisp et

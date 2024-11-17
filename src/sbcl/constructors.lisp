@@ -470,6 +470,11 @@
     ()
   (inst vcvtdq2ps rv v))
 
+(defvop int4-from-float4 ((v float4 :target rv))
+    ((rv int4))
+    ()
+  (inst vcvtps2dq rv v))
+
 ;; emulate VCVTQQ2PD
 (defvop double2-from-long2 ((v long2))
     ((rv double2))
@@ -487,6 +492,26 @@
       (inst vpextrq tmp v 0)))
   (inst vpermilpd rv rv #4r00)
   (inst vcvtsi2sd rv rv tmp))
+
+;; emulate VCVTPD2QQ
+(defvop long2-from-double2 ((v double2))
+    ((rv long2))
+    ((tmp long)
+     (src double2))
+  (if (location= rv v)
+    (progn
+      (move src v)
+      (inst vcvtsd2si tmp src)
+      (inst vmovq rv tmp)
+      (inst vpermilpd src src 1)
+      (inst vcvtsd2si tmp src)
+      (inst vpinsrq rv rv tmp 1))
+    (progn
+      (inst vcvtsd2si tmp v)
+      (inst vmovq rv tmp)
+      (inst vpermilpd v v 1)
+      (inst vcvtsd2si tmp v)
+      (inst vpinsrq rv rv tmp 1))))
 
 (definline float4 (x)
   (typecase x
