@@ -86,6 +86,19 @@
   (def int4-or int4 vpor (int4 0))
   (def int4-xor int4 vpxor (int4 0)))
 
+;; incf/decf
+
+(macrolet ((def (type)
+             (let ()
+               `(progn
+                  (defmacro ,(symbolicate type '#:-incf) (place &optional (delta 1))
+                    `(setf ,place (,',(symbolicate type '#:+) ,place ,delta)))
+                  (defmacro ,(symbolicate type '#:-decf) (place &optional (delta 1))
+                    `(setf ,place (,',(symbolicate type '#:-) ,place ,delta)))))))
+  (def float4)
+  (def int4)
+  (def double2))
+
 ;; clamp
 
 (macrolet ((def (type)
