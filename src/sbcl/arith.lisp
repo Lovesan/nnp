@@ -320,4 +320,130 @@
   (def double2)
   (def int4))
 
+;; comparisons
+
+(macrolet ((def (type op inst cmp)
+             (let ((name (symbolicate% type op)))
+               `(defvop ,name ((v1 ,type :target rv) (v2 ,type))
+                    ((rv ,type))
+                    ()
+                  (inst ,inst ,cmp rv v1 v2)))))
+  (def float4 = vcmpps :eq)
+  (def float4 < vcmpps :lt)
+  (def float4 <= vcmpps :le)
+  (def float4 > vcmpps :gt)
+  (def float4 >= vcmpps :ge)
+  (def float4 /= vcmpps :neq)
+  (def double2 = vcmppd :eq)
+  (def double2 < vcmppd :lt)
+  (def double2 <= vcmppd :le)
+  (def double2 > vcmppd :gt)
+  (def double2 >= vcmppd :ge)
+  (def double2 /= vcmppd :neq))
+
+(macrolet ((def (type op inst)
+             (let ((name (symbolicate% type op)))
+               `(defvop ,name ((v1 ,type :target rv) (v2 ,type))
+                    ((rv ,type))
+                    ()
+                  (inst ,inst rv v1 v2)))))
+  (def int4 = vpcmpeqd)
+  (def int4 > vpcmpgtd))
+
+(macrolet ((def (type op reverse-op)
+             (let ((name (symbolicate% type op))
+                   (not-name (symbolicate type '#:-not))
+                   (reverse-name (symbolicate% type reverse-op)))
+               `(definline ,name (v1 v2)
+                  (declare (type ,type v1 v2))
+                  (,not-name (,reverse-name v1 v2))))))
+  (def int4 <= >)
+  (def int4 /= =))
+
+(macrolet ((def (type)
+             (let ()
+               `(progn
+                  (definline ,(symbolicate% type '>=) (v1 v2)
+                    (declare (type ,type v1 v2))
+                    (,(symbolicate type '#:-or)
+                     (,(symbolicate% type '>) v1 v2)
+                     (,(symbolicate% type '=) v1 v2)))
+                  (definline ,(symbolicate% type '<) (v1 v2)
+                    (declare (type ,type v1 v2))
+                    (,(symbolicate type '#:-not)
+                     (,(symbolicate type '#:-or)
+                      (,(symbolicate% type '>) v1 v2)
+                      (,(symbolicate% type '=) v1 v2))))))))
+  (def int4))
+
+(macrolet ((def (type op true andfn)
+             (let* ((name (symbolicate type op))
+                    (vop-name (symbolicate% name)))
+               `(progn
+                  (defun ,name (arg &rest more-args)
+                    (declare (dynamic-extent more-args))
+                    (if (endp more-args)
+                      ,true
+                      (loop :with a = (,type arg)
+                            :with b = (,type (first more-args))
+                            :with result = (,vop-name a b)
+                            :for arg :in (rest more-args)
+                            :do (shiftf a b (,type arg))
+                                (setf result (,andfn result (,vop-name a b)))
+                            :finally (return result))))
+                  (define-compiler-macro ,name (arg &rest more-args)
+                    (if (endp more-args)
+                      ,true
+                      (let ((bindings
+                              (loop :for arg :in (list* arg more-args)
+                                    :collect `(,(gensym (string '#:arg))
+                                               (,',type ,arg)))))
+                        `(let ,bindings
+                           (,',andfn ,@(loop :for ((a nil) (b nil) . rest) :on bindings
+                                             :collect `(,',vop-name ,a ,b)
+                                             :until (endp rest)))))))))))
+  (def float4 = (float4! (int4 -1)) float4-and)
+  (def float4 < (float4! (int4 -1)) float4-and)
+  (def float4 <= (float4! (int4 -1)) float4-and)
+  (def float4 > (float4! (int4 -1)) float4-and)
+  (def float4 >= (float4! (int4 -1)) float4-and)
+  (def double2 = (double2! (int4 -1)) float4-and)
+  (def double2 < (double2! (int4 -1)) float4-and)
+  (def double2 <= (double2! (int4 -1)) float4-and)
+  (def double2 > (double2! (int4 -1)) float4-and)
+  (def double2 >= (double2! (int4 -1)) float4-and)
+  (def int4 = (int4 -1) int4-and)
+  (def int4 < (int4 -1) int4-and)
+  (def int4 <= (int4 -1) int4-and)
+  (def int4 > (int4 -1) int4-and)
+  (def int4 >= (int4 -1) int4-and))
+
+(macrolet ((def (type true andfn)
+             (let* ((name (symbolicate type '/=))
+                    (vop-name (symbolicate% name)))
+               `(progn
+                  (defun ,name (arg &rest more-args)
+                    (declare (dynamic-extent more-args))
+                    (loop :with args = (list* (,type arg) (mapcar ',type more-args))
+                          :with result = ,true
+                          :for (a . rest) :on args :do
+                            (loop :for b :in rest :do
+                              (setf result (,andfn result (,vop-name a b))))
+                          :finally (return result)))
+                  (define-compiler-macro ,name (arg &rest more-args)
+                    (if (endp more-args)
+                      ,true
+                      (let ((bindings (loop :for arg :in (list* arg more-args)
+                                            :collect `(,(gensym (string '#:arg))
+                                                       (,',type ,arg)))))
+                        `(let ,bindings
+                           (,',andfn
+                            ,@(loop :for ((a nil) . rest) :on bindings
+                                    :append
+                                    (loop :for (b nil) :in rest
+                                          :collect `(,',vop-name ,a ,b))))))))))))
+  (def float4 (float4! (int4 -1)) float4-and)
+  (def double2 (double2! (int4 -1)) double2-and)
+  (def int4 (int4 -1) int4-and))
+
 ;;; vim: ft=lisp et
