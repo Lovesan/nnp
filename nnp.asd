@@ -45,6 +45,7 @@
                                            (:file "defvop")
                                            (:file "constructors")
                                            (:file "load-store")
-                                           (:file "arith")))))))
+                                           (:file "arith")
+                                           (:file "math")))))))
 
 ;;; vim: ft=lisp et
