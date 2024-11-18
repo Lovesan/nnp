@@ -24,6 +24,7 @@
 
 (in-package #:nnp)
 
+(defconstant +float-negative-zero+ (single! #x80000000))
 (defconstant +float-qnan+ (single! #x7FC00000))
 (defconstant +float-infinity+ (single! #x7F800000))
 ;; min-norm-pos is the smallest non denormalized float number
@@ -52,6 +53,16 @@
 (defconstant +cephes-exp-p3+ 4.1665795894d-2)
 (defconstant +cephes-exp-p4+ 1.6666665459d-1)
 (defconstant +cephes-exp-p5+ 5.0000001201d-1)
+(defconstant +cephes-fopi+ 1.2732395447351628d0) ; (/ 4 pi)
+(defconstant +minus-cephes-dp1+ -0.78515625d0)
+(defconstant +minus-cephes-dp2+ -2.4187564849853515625d-4)
+(defconstant +minus-cephes-dp3+ -3.77489497744594108d-8)
+(defconstant +sincof-p0+ -1.9515295891d-4)
+(defconstant +sincof-p1+  8.3321608736d-3)
+(defconstant +sincof-p2+ -1.6666654611d-1)
+(defconstant +coscof-p0+  2.443315711809948d-5)
+(defconstant +coscof-p1+ -1.388731625493765d-3)
+(defconstant +coscof-p2+  4.166664568298827d-2)
 
 (macrolet ((def (name type inst)
              (let ((vop-name (symbolicate% name)))
@@ -62,7 +73,12 @@
                        (definline ,name (v)
                          (,vop-name (,type v)))))))
   (def float4-sqrt float4 vsqrtps)
+  (def double2-sqrt double2 vsqrtpd)
   (def float4-rsqrt float4 vrsqrtps))
+
+(definline double2-rsqrt (v)
+  (let ((v (double2 v)))
+    (%double2/ (double2 1) (%double2-sqrt v))))
 
 (defvop %float4-dot ((v1 float4) (v2 float4) (mask imm8))
     ((rv float4))
@@ -167,10 +183,9 @@
 (definline float4-exp (v)
   (let* ((v (float4 v))
          (one (float4 1))
-         (ps0p5 (float4 0.5))
          (v (float4-clamp v +exp-min+ +exp-max+)))
     ;; express exp(x) as exp(g + n*log(2))
-    (let* ((fx (%float4-fmadd v (float4 +cephes-log2ef+) ps0p5))
+    (let* ((fx (%float4-fmadd v (float4 +cephes-log2ef+) (float4 0.5)))
            (emm0 (%float4-truncate fx))
            (tmp (float4 emm0))
            ;; if greater, subtract 1
@@ -211,5 +226,166 @@
       (%float4/ (%float4-log x)
                 (%float4-log base))
       (%float4-log x))))
+
+;; The code is the exact rewriting of the cephes sinf function.
+;; Precision is excellent as long as x < 8192
+(definline float4-sin (v)
+  (let* ((v (float4 v))
+         (sign-bit (%float4-and v (float4 +float-negative-zero+)))
+         (v (float4-abs v))
+         (y (%float4* v (float4 +cephes-fopi+)))
+         ;; j=(j+1) & (~1) (see the cephes sources)
+         (emm2 (%int4-and (%int4+ (%float4-truncate y)
+                                  (int4 1))
+                          (int4 (lognot 1))))
+         (y (float4-from-int4 emm2))
+         ;; get the swap sign flag
+         (swap-sign-bit
+           (float4! (%int4-shiftl (%int4-and emm2 (int4 4))
+                                  29)))
+         ;; get the polynom selection mask
+         ;; there is one polynom for 0 <= x <= pi/4
+         ;; and another one for pi/4 < x <= pi/2
+         ;; Both branches will be computed.
+         (poly-mask (float4! (%int4= (%int4-and emm2 (int4 2))
+                                     (int4 0))))
+         (sign-bit (%float4-xor sign-bit swap-sign-bit))
+         (z (float4 0))
+         (y2 (float4 0)))
+    ;; The magic pass: "Extended precision modular arithmetic "
+    ;; x = ((x - y * DP1) - y * DP2) - y * DP3;
+    (setf v (%float4-fmadd y (float4 +minus-cephes-dp1+) v)
+          v (%float4-fmadd y (float4 +minus-cephes-dp2+) v)
+          v (%float4-fmadd y (float4 +minus-cephes-dp3+) v))
+    ;; Evaluate the first polynom (0 <= x <= pi/4)
+    (setf y (float4 +coscof-p0+)
+          z (%float4* v v)
+
+          y (%float4-fmadd y z (float4 +coscof-p1+))
+          y (%float4-fmadd y z (float4 +coscof-p2+))
+          y (%float4* y z)
+          y (%float4* y z)
+          y (%float4-fnmadd z (float4 0.5) y)
+          y (%float4+ y (float4 1)))
+    ;; Evaluate the second polynom (pi/4 <= x <= 0)
+    (setf y2 (float4 +sincof-p0+)
+          y2 (%float4-fmadd y2 z (float4 +sincof-p1+))
+          y2 (%float4-fmadd y2 z (float4 +sincof-p2+))
+          y2 (%float4* y2 z)
+          y2 (%float4-fmadd y2 v v))
+    ;; Select the correct result from the two polynoms
+    (setf y2 (%float4-and poly-mask y2)
+          y (%float4-andc1 poly-mask y)
+          y (%float4+ y y2))
+    ;; Update the sign
+    (setf y (%float4-xor y sign-bit))
+    y))
+
+;; almost the same as sin
+
+(definline float4-cos (v)
+  (let* ((v (float4 v))
+         (v (float4-abs v))
+         (y (%float4* v (float4 +cephes-fopi+)))
+         ;; j=(j+1) & (~1) (see the cephes sources)
+         (emm2 (%int4-and (%int4+ (%float4-truncate y)
+                                  (int4 1))
+                          (int4 (lognot 1))))
+         (y (float4-from-int4 emm2))
+         (emm2 (%int4- emm2 (int4 2)))
+         ;; get the swap sign flag
+         (emm0 (%int4-shiftl (%int4-andc1 emm2 (int4 4))
+                             29))
+         ;; get the polynom selection mask
+         (emm2 (%int4= (%int4-and emm2 (int4 2))
+                       (int4 0)))
+         (sign-bit (float4! emm0))
+         (poly-mask (float4! emm2))
+         (z (float4 0))
+         (y2 (float4 0)))
+    ;; The magic pass: "Extended precision modular arithmetic "
+    ;; x = ((x - y * DP1) - y * DP2) - y * DP3;
+    (setf v (%float4-fmadd y (float4 +minus-cephes-dp1+) v)
+          v (%float4-fmadd y (float4 +minus-cephes-dp2+) v)
+          v (%float4-fmadd y (float4 +minus-cephes-dp3+) v))
+    ;; Evaluate the first polynom (0 <= x <= pi/4)
+    (setf y (float4 +coscof-p0+)
+          z (%float4* v v)
+
+          y (%float4-fmadd y z (float4 +coscof-p1+))
+          y (%float4-fmadd y z (float4 +coscof-p2+))
+          y (%float4* y z)
+          y (%float4* y z)
+          y (%float4-fnmadd z (float4 0.5) y)
+          y (%float4+ y (float4 1)))
+    ;; Evaluate the second polynom (pi/4 <= x <= 0)
+    (setf y2 (float4 +sincof-p0+)
+          y2 (%float4-fmadd y2 z (float4 +sincof-p1+))
+          y2 (%float4-fmadd y2 z (float4 +sincof-p2+))
+          y2 (%float4* y2 z)
+          y2 (%float4-fmadd y2 v v))
+    ;; Select the correct result from the two polynoms
+    (setf y2 (%float4-and poly-mask y2)
+          y (%float4-andc1 poly-mask y)
+          y (%float4+ y y2))
+    ;; Update the sign
+    (setf y (%float4-xor y sign-bit))
+    y))
+
+;; since sin and cos are almost identical, sincos could replace both of them
+;; is is almost as fast, and gives you a free cosine with your sine
+
+(definline float4-sincos (v)
+  (let* ((v (float4 v))
+         (sign-bit-sin (%float4-and v (float4 +float-negative-zero+)))
+         (v (float4-abs v))
+         (y (%float4* v (float4 +cephes-fopi+)))
+         ;; j=(j+1) & (~1) (see the cephes sources)
+         (emm2 (%int4-and (%int4+ (%float4-truncate y)
+                                  (int4 1))
+                          (int4 (lognot 1))))
+         (y (float4-from-int4 emm2))
+         ;; get the swap sign flag for sine
+         (swap-sign-bit-sin
+           (float4! (%int4-shiftl (%int4-and emm2 (int4 4))
+                                  29)))
+         (poly-mask (float4! (%int4= (%int4-and emm2 (int4 2))
+                                     (int4 0))))
+         (sign-bit-cos
+           (float4! (%int4-shiftl (%int4-andc1 (%int4- emm2 (int4 2))
+                                               (int4 4))
+                                  29)))
+         (sign-bit-sin (%float4-xor sign-bit-sin swap-sign-bit-sin))
+         (z (float4 0))
+         (y2 (float4 0)))
+    ;; The magic pass: "Extended precision modular arithmetic "
+    ;; x = ((x - y * DP1) - y * DP2) - y * DP3;
+    (setf v (%float4-fmadd y (float4 +minus-cephes-dp1+) v)
+          v (%float4-fmadd y (float4 +minus-cephes-dp2+) v)
+          v (%float4-fmadd y (float4 +minus-cephes-dp3+) v))
+    ;; Evaluate the first polynom (0 <= x <= pi/4)
+    (setf y (float4 +coscof-p0+)
+          z (%float4* v v)
+
+          y (%float4-fmadd y z (float4 +coscof-p1+))
+          y (%float4-fmadd y z (float4 +coscof-p2+))
+          y (%float4* y z)
+          y (%float4* y z)
+          y (%float4-fnmadd z (float4 0.5) y)
+          y (%float4+ y (float4 1)))
+    ;; Evaluate the second polynom (pi/4 <= x <= 0)
+    (setf y2 (float4 +sincof-p0+)
+          y2 (%float4-fmadd y2 z (float4 +sincof-p1+))
+          y2 (%float4-fmadd y2 z (float4 +sincof-p2+))
+          y2 (%float4* y2 z)
+          y2 (%float4-fmadd y2 v v))
+    (let* ((ysin1 (%float4-andc1 poly-mask y))
+           (ysin2 (%float4-and poly-mask y2))
+           (y2 (%float4- y2 ysin2))
+           (y (%float4- y ysin1))
+           (tmp1 (%float4+ ysin1 ysin2))
+           (tmp2 (%float4+ y y2)))
+      (values (%float4-xor tmp1 sign-bit-sin)
+              (%float4-xor tmp2 sign-bit-cos)))))
 
 ;;; vim: ft=lisp et
