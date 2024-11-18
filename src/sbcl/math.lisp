@@ -53,13 +53,16 @@
 (defconstant +cephes-exp-p4+ 1.6666665459d-1)
 (defconstant +cephes-exp-p5+ 5.0000001201d-1)
 
-(defvop %float4-sqrt ((v float4))
-    ((rv float4))
-    ()
-  (inst vsqrtps rv v))
-
-(definline float4-sqrt (v)
-  (%float4-sqrt (float4 v)))
+(macrolet ((def (name type inst)
+             (let ((vop-name (symbolicate% name)))
+               `(progn (defvop ,vop-name ((v ,type))
+                           ((rv ,type))
+                           ()
+                         (inst ,inst rv v))
+                       (definline ,name (v)
+                         (,vop-name (,type v)))))))
+  (def float4-sqrt float4 vsqrtps)
+  (def float4-rsqrt float4 vrsqrtps))
 
 (defvop %float4-dot ((v1 float4) (v2 float4) (mask imm8))
     ((rv float4))

@@ -480,4 +480,25 @@
   (def double2-ceiling #x2)
   (def double2-truncate #x3))
 
+(macrolet ((def (type)
+             `(definline ,(symbolicate type '#:-abs) (v)
+                (let ((v (,type v)))
+                  (,(symbolicate% type '#:-max)
+                   v
+                   (,(symbolicate% type '-) (,type 0) v))))))
+  (def float4)
+  (def double2))
+
+(macrolet ((def (type inst)
+             (let* ((name (symbolicate type '#:-abs))
+                    (vop-name (symbolicate% name)))
+               `(progn
+                  (defvop ,vop-name ((v ,type))
+                      ((rv ,type))
+                      ()
+                    (inst ,inst rv v))
+                  (definline ,name (v)
+                    (,vop-name (,type v)))))))
+  (def int4 vpabsd))
+
 ;;; vim: ft=lisp et
