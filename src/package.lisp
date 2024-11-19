@@ -64,6 +64,8 @@
    #:float4-permute
    #:float4-shuffle
    #:float4-extract
+   #:float4-interleave-low
+   #:float4-interleave-high
    #:float4-load
    #:float4-row-major-aref
    #:float4-aref
@@ -145,6 +147,8 @@
    #:double2-values
    #:double2-permute
    #:double2-shuffle
+   #:double2-interleave-low
+   #:double2-interleave-high
    #:double2-load
    #:double2-row-major-aref
    #:double2-aref
@@ -209,6 +213,8 @@
    #:int4-permute
    #:int4-shuffle
    #:int4-extract
+   #:int4-interleave-low
+   #:int4-interleave-high
    #:int4-load
    #:int4-row-major-aref
    #:int4-aref
@@ -262,6 +268,8 @@
    #:long2-values
    #:long2-permute
    #:long2-shuffle
+   #:long2-interleave-low
+   #:long2-interleave-high
    #:long2-load
    #:long2-row-major-aref
    #:long2-aref
