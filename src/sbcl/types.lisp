@@ -110,7 +110,9 @@
                           (deftype t))
   `(progn
      ,@(when deftype
-         `((deftype ,name () ',real-type)))
+         `((deftype ,name () ',real-type)
+           (definline ,(symbolicate name '#:p) (object)
+             (typep object ',name))))
      (eval-when (:compile-toplevel :load-toplevel :execute)
        (setf (gethash ',name -optypes-)
              (make-optype :name ',name
@@ -258,12 +260,12 @@
   :vop-type sb-vm::positive-fixnum
   :vector-type index-vec)
 
-(defoptype intptr (nsigned-byte sb-vm:n-word-bits)
+(defoptype intptr (signed-byte #.sb-vm:n-word-bits)
   :width sb-vm:n-word-bits
   :scs sb-vm::signed-reg
   :vop-type sb-vm::signed-num)
 
-(defoptype uintptr (unsigned-byte sb-vm:n-word-bits)
+(defoptype uintptr (unsigned-byte #.sb-vm:n-word-bits)
   :width sb-vm:n-word-bits
   :scs sb-vm::unsigned-reg
   :vop-type sb-vm::unsigned-num)

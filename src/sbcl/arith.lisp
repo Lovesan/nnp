@@ -35,13 +35,13 @@
                       ()
                     (inst ,inst rv v1 v2))
                   ,(if identity
-                     `(definline ,name (&rest args)
+                     `(defun ,name (&rest args)
                         (declare (dynamic-extent args))
                         (loop :with acc = ,identity
                               :for x :in args
                               :do (setf acc (,vop-name acc (,type x)))
                               :finally (return acc)))
-                     `(definline ,name (arg &rest more-args)
+                     `(defun ,name (arg &rest more-args)
                         (declare (dynamic-extent more-args))
                         (loop :with acc = (,type arg)
                               :for x :in more-args
@@ -84,7 +84,67 @@
   (def int4-max int4 vpmaxsd)
   (def int4-and int4 vpand (int4 -1))
   (def int4-or int4 vpor (int4 0))
-  (def int4-xor int4 vpxor (int4 0)))
+  (def int4-xor int4 vpxor (int4 0))
+  (def long2+ long2 vpaddq (long2 0))
+  (def long2-and long2 vpand (long2 -1))
+  (def long2-or long2 vpor (long2 0))
+  (def long2-xor long2 vpxor (long2 0)))
+
+(macrolet ((def (name type fn)
+             (let ((vop-name (symbolicate% name))
+                   (ctor-name (symbolicate '#:make- type))
+                   (values-name (symbolicate type '#:-values)))
+               `(progn
+                  (definline ,vop-name (v1 v2)
+                    (declare (type ,type v1 v2))
+                    (multiple-value-bind (x1 y1) (,values-name v1)
+                      (multiple-value-bind (x2 y2) (,values-name v2)
+                        (,ctor-name (,fn x1 x2) (,fn y1 y2)))))
+                  (defun ,name (arg &rest more-args)
+                    (declare (dynamic-extent more-args))
+                    (loop :with acc = (,type arg)
+                          :for x :in more-args
+                          :do (setf acc (,vop-name acc (,type x)))
+                          :finally (return acc)))
+                  (define-compiler-macro ,name (&whole whole &rest args)
+                    (let ((len (length args)))
+                      (case len
+                        (0 whole)
+                        (1 `(,',type ,(first args)))
+                        (t `(,',vop-name
+                             (,',name ,@(subseq args 0 (floor len 2)))
+                             (,',name ,@(subseq args (floor len 2))))))))))))
+  (def long2-max long2 max)
+  (def long2-min long2 min))
+
+;; Emulate VPMULLQ
+(defvop %long2* ((v1 long2 :target rv) (v2 long2))
+    ((rv long2))
+    ((tmp1 long)
+     (tmp2 long))
+  (inst vpextrq tmp1 v1 0)
+  (inst vpextrq tmp2 v2 0)
+  (inst imul tmp1 tmp2)
+  (inst vpinsrq rv rv tmp1 0)
+  (inst vpextrq tmp1 v1 1)
+  (inst vpextrq tmp2 v2 1)
+  (inst imul tmp1 tmp2)
+  (inst vpinsrq rv rv tmp1 1))
+
+(defun long2* (&rest args)
+  (loop :with acc = (long2 1)
+        :for arg :in args
+        :do (setf acc (%long2* (long2 arg) acc))
+        :finally (return acc)))
+
+(define-compiler-macro long2* (&rest args)
+  (let ((len (length args)))
+    (case len
+      (0 `(long2 1))
+      (1 `(long2 ,(first args)))
+      (t `(%long2*
+           (long2* ,@(subseq args 0 (floor len 2)))
+           (long2* ,@(subseq args (floor len 2))))))))
 
 ;; incf/decf
 
@@ -97,7 +157,8 @@
                     `(setf ,place (,',(symbolicate type '#:-) ,place ,delta)))))))
   (def float4)
   (def int4)
-  (def double2))
+  (def double2)
+  (def long2))
 
 ;; clamp
 
@@ -112,7 +173,8 @@
 
   (def float4)
   (def double2)
-  (def int4))
+  (def int4)
+  (def long2))
 
 ;; shifts
 
@@ -130,7 +192,9 @@
                     (with-primitive-argument (n imm5)
                       (,vop-name (,type v) n)))))))
   (def int4-shiftl int4 pslld-imm)
-  (def int4-shiftr int4 psrld-imm))
+  (def int4-shiftr int4 psrld-imm)
+  (def long2-shiftl long2 psllq-imm)
+  (def long2-shiftr long2 psrlq-imm))
 
 ;; reducing operation
 
@@ -161,7 +225,8 @@
   (def float4/ float4 vdivps (float4 1))
   (def double2- double2 vsubpd (double2 0))
   (def double2/ double2 vdivpd (double2 1))
-  (def int4- int4 vpsubd (int4 0)))
+  (def int4- int4 vpsubd (int4 0))
+  (def long2- long2 vpsubq (long2 0)))
 
 ;; horizontal functions
 
@@ -259,6 +324,21 @@
   (def double2 or double2-or)
   (def double2 xor double2-xor))
 
+(macrolet ((def (name type op)
+             (let ((values-name (symbolicate type '#:-values)))
+               `(definline ,name (v)
+                  (let ((v (,type v)))
+                    (multiple-value-bind (x y) (,values-name v)
+                      (,op x y)))))))
+  (def long2-h+ long2 +)
+  (def long2-h- long2 -)
+  (def long2-h* long2 *)
+  (def long2-hmax long2 max)
+  (def long2-hmin long2 min)
+  (def long2-hand long2 logand)
+  (def long2-hor long2 logior)
+  (def long2-hxor long2 logxor))
+
 ;; FMA
 
 (macrolet ((def (name type inst)
@@ -307,7 +387,8 @@
                          (,vop-name (,type v1) (,type v2)))))))
   (def float4-andc1 float4 vandnps)
   (def double2-andc1 double2 vandnpd)
-  (def int4-andc1 int4 vpandn))
+  (def int4-andc1 int4 vpandn)
+  (def long2-andc1 long2 vpandn))
 
 ;; not
 (macrolet ((def (type)
@@ -318,7 +399,8 @@
                   (,andc1-name (,type v) (,cast (int4 -1)))))))
   (def float4)
   (def double2)
-  (def int4))
+  (def int4)
+  (def long2))
 
 ;; comparisons
 
@@ -348,7 +430,9 @@
                     ()
                   (inst ,inst rv v1 v2)))))
   (def int4 = vpcmpeqd)
-  (def int4 > vpcmpgtd))
+  (def int4 > vpcmpgtd)
+  (def long2 = vpcmpeqq)
+  (def long2 > vpcmpgtq))
 
 (macrolet ((def (type op reverse-op)
              (let ((name (symbolicate% type op))
@@ -358,7 +442,9 @@
                   (declare (type ,type v1 v2))
                   (,not-name (,reverse-name v1 v2))))))
   (def int4 <= >)
-  (def int4 /= =))
+  (def int4 /= =)
+  (def long2 <= >)
+  (def long2 /= =))
 
 (macrolet ((def (type)
              (let ()
@@ -374,7 +460,8 @@
                      (,(symbolicate type '#:-or)
                       (,(symbolicate% type '>) v1 v2)
                       (,(symbolicate% type '=) v1 v2))))))))
-  (def int4))
+  (def int4)
+  (def long2))
 
 (macrolet ((def (type op true andfn)
              (let* ((name (symbolicate type op))
@@ -416,7 +503,12 @@
   (def int4 < (int4 -1) int4-and)
   (def int4 <= (int4 -1) int4-and)
   (def int4 > (int4 -1) int4-and)
-  (def int4 >= (int4 -1) int4-and))
+  (def int4 >= (int4 -1) int4-and)
+  (def long2 = (long2 -1) long2-and)
+  (def long2 < (long2 -1) long2-and)
+  (def long2 <= (long2 -1) long2-and)
+  (def long2 > (long2 -1) long2-and)
+  (def long2 >= (long2 -1) long2-and))
 
 (macrolet ((def (type true andfn)
              (let* ((name (symbolicate type '/=))
@@ -444,7 +536,8 @@
                                           :collect `(,',vop-name ,a ,b))))))))))))
   (def float4 (float4! (int4 -1)) float4-and)
   (def double2 (double2! (int4 -1)) double2-and)
-  (def int4 (int4 -1) int4-and))
+  (def int4 (int4 -1) int4-and)
+  (def long2 (long2 -1) long2-and))
 
 (defvop %float4-truncate ((v float4 :target rv))
     ((rv int4))
@@ -487,7 +580,8 @@
                    v
                    (,(symbolicate% type '-) (,type 0) v))))))
   (def float4)
-  (def double2))
+  (def double2)
+  (def long2))
 
 (macrolet ((def (type inst)
              (let* ((name (symbolicate type '#:-abs))

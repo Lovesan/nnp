@@ -65,7 +65,7 @@
                     (mem-set-aref-name (symbolicate type '#:-mem-set-aref))
                     (mem-set-aref-vop-name (symbolicate% mem-set-aref-name))
                     (mem-set-aref-vop-const-name (symbolicate mem-set-aref-vop-name '#:-const))
-                    (ntload-name (symbolicate type '#:-ntload))
+                    (ntload-name (symbolicate type '#:-non-temporal-load))
                     (ntload-vop-name (symbolicate% ntload-name))
                     (ntload-vop-const-name (symbolicate ntload-vop-name '#:-const))
                     (ntaref-name (symbolicate type '#:-non-temporal-aref))
@@ -75,7 +75,7 @@
                     (ntmem-aref-name (symbolicate type '#:-non-temporal-mem-aref))
                     (ntmem-aref-vop-name (symbolicate% ntmem-aref-name))
                     (ntmem-aref-vop-const-name (symbolicate ntmem-aref-vop-name '#:-const))
-                    (ntstore-name (symbolicate type '#:-ntstore))
+                    (ntstore-name (symbolicate type '#:-non-temporal-store))
                     (ntstore-vop-name (symbolicate% ntstore-name))
                     (ntstore-vop-const-name (symbolicate ntstore-vop-name '#:-const))
                     (ntrmaref-name (symbolicate type '#:-non-temporal-row-major-aref))
@@ -496,9 +496,6 @@
                  (float4x4-r1 m)
                  (float4x4-r2 m)
                  (float4x4-r3 m)))
-
-(definline float4x4p (object)
-  (typep object 'float4x4))
 
 (definline float4x4-identity ()
   (make-float4x4 (make-float4 1 0 0 0)
