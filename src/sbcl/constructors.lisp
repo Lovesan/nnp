@@ -841,4 +841,64 @@
   (def long2 vpunpcklqdq vpunpckhqdq)
   (def ulong2 vpunpcklqdq vpunpckhqdq))
 
+
+;; vector constructors
+
+(macrolet ((frob (&rest types)
+             `(progn
+                ,@(loop :for vectype :in types
+                        :for eltype = (optype-element-type vectype)
+                        :collect
+                        `(progn
+                           (defun ,vectype (&rest elements)
+                             (declare (dynamic-extent elements))
+                             (let ((len (length elements)))
+                               (make-array
+                                len
+                                :element-type ',eltype
+                                :initial-contents (mapcar (lambda (x) (,eltype x))
+                                                          elements))))
+                           (define-compiler-macro ,vectype (&rest elements)
+                             (let ((elements (loop :for elt :in elements
+                                                   :collect `(,',eltype ,elt))))
+                               `(make-array ,(length elements)
+                                            :element-type ',',eltype
+                                            :initial-contents (list ,@elements)))))))))
+  (frob float-vector
+        double-vector
+        sbyte-vector
+        ubyte-vector
+        short-vector
+        ushort-vector
+        int-vector
+        uint-vector
+        long-vector
+        ulong-vector))
+
+(macrolet ((frob (&rest types)
+             `(progn
+                ,@(loop :for vectype :in types
+                        :for eltype = (optype-element-type vectype)
+                        :collect
+                        `(progn
+                           (defun ,vectype (&rest elements)
+                             (declare (dynamic-extent elements))
+                             (let ((len (length elements)))
+                               (make-array
+                                len
+                                :element-type ',eltype
+                                :initial-contents (mapcar (lambda (x)
+                                                            (coerce x ',eltype))
+                                                          elements))))
+                           (define-compiler-macro ,vectype (&rest elements)
+                             (let ((elements (loop :for elt :in elements
+                                                   :collect `(coerce ,elt ',',eltype))))
+                               `(make-array ,(length elements)
+                                            :element-type ',',eltype
+                                            :initial-contents (list ,@elements)))))))))
+  (frob intptr-vector
+        uintptr-vector
+        fixnum-vector
+        index-vector))
+
 ;;; vim: ft=lisp et

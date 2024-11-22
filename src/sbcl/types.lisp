@@ -107,11 +107,14 @@
                           vector-type
                           (element-type name)
                           immediate
-                          (deftype t))
+                          (deftype t)
+                          (predicate (if (find #\- (symbol-name name))
+                                       (symbolicate name '#:-p)
+                                       (symbolicate name '#:p))))
   `(progn
      ,@(when deftype
          `((deftype ,name () ',real-type)
-           (definline ,(symbolicate name '#:p) (object)
+           (definline ,predicate (object)
              (typep object ',name))))
      (eval-when (:compile-toplevel :load-toplevel :execute)
        (setf (gethash ',name -optypes-)
@@ -141,67 +144,67 @@
   :width 32
   :scs sb-vm::single-reg
   :vop-type single-float
-  :vector-type float-vec)
+  :vector-type float-vector)
 
 (defoptype double double-float
   :width 64
   :scs sb-vm::double-reg
   :vop-type double-float
-  :vector-type double-vec)
+  :vector-type double-vector)
 
 (defoptype sbyte (signed-byte 8)
   :width 8
   :scs sb-vm::signed-reg
   :vop-type sb-vm::signed-num
-  :vector-type sbyte-vec)
+  :vector-type sbyte-vector)
 
 (defoptype ubyte (unsigned-byte 8)
   :width 8
   :scs sb-vm::unsigned-reg
   :vop-type sb-vm::unsigned-num
-  :vector-type ubyte-vec)
+  :vector-type ubyte-vector)
 
 (defoptype short (signed-byte 16)
   :width 16
   :scs sb-vm::signed-reg
   :vop-type sb-vm::signed-num
-  :vector-type short-vec)
+  :vector-type short-vector)
 
 (defoptype ushort (unsigned-byte 16)
   :width 16
   :scs sb-vm::unsigned-reg
   :vop-type sb-vm::unsigned-num
-  :vector-type ushort-vec)
+  :vector-type ushort-vector)
 
 (defoptype int (signed-byte 32)
   :width 32
   :scs sb-vm::signed-reg
   :vop-type sb-vm::signed-num
-  :vector-type int-vec)
+  :vector-type int-vector)
 
 (defoptype uint (unsigned-byte 32)
   :width 32
   :scs sb-vm::unsigned-reg
   :vop-type sb-vm::unsigned-num
-  :vector-type uint-vec)
+  :vector-type uint-vector)
 
 (defoptype long (signed-byte 64)
   :width 64
   :scs sb-vm::signed-reg
   :vop-type sb-vm::signed-num
-  :vector-type long-vec)
+  :vector-type long-vector)
 
 (defoptype ulong (unsigned-byte 64)
   :width 64
   :scs sb-vm::unsigned-reg
   :vop-type sb-vm::unsigned-num
-  :vector-type ulong-vec)
+  :vector-type ulong-vector)
 
 (defoptype index (integer 0 #.array-total-size-limit)
   :width (floor (log array-total-size-limit 2))
   :scs (sb-vm::any-reg sb-vm::unsigned-reg sb-vm::signed-reg)
   :vop-type sb-vm::positive-fixnum
-  :vector-type index-vec)
+  :vector-type index-vector)
 
 ;; immediate
 (defoptype low-index (unsigned-byte #.+low-index-size+)
@@ -214,108 +217,128 @@
   :width sb-vm:n-fixnum-bits
   :scs (sb-vm::any-reg sb-vm::signed-reg)
   :vop-type fixnum
-  :vector-type fixnum-vec
+  :vector-type fixnum-vector
   :deftype nil)
 
 (defoptype positive-fixnum (integer 1 #.most-positive-fixnum)
   :width sb-vm:n-fixnum-bits
   :scs (sb-vm::any-reg sb-vm::unsigned-reg sb-vm::signed-reg)
   :vop-type sb-vm::positive-fixnum
-  :vector-type index-vec)
+  :vector-type index-vector)
 
 (defoptype intptr (signed-byte #.sb-vm:n-word-bits)
   :width sb-vm:n-word-bits
   :scs sb-vm::signed-reg
-  :vop-type sb-vm::signed-num)
+  :vop-type sb-vm::signed-num
+  :vector-type intptr-vector)
 
 (defoptype uintptr (unsigned-byte #.sb-vm:n-word-bits)
   :width sb-vm:n-word-bits
   :scs sb-vm::unsigned-reg
-  :vop-type sb-vm::unsigned-num)
+  :vop-type sb-vm::unsigned-num
+  :vector-type uintptr-vector)
 
 (defoptype pointer sb-sys:system-area-pointer
   :width sb-vm:n-word-bits
   :scs sb-vm::sap-reg
   :vop-type sb-sys:system-area-pointer)
 
-(defoptype float-vec (simple-array single (*))
+(defoptype float-vector (simple-array single (*))
   :width sb-vm:n-word-bits
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-single-float
   :element-type single)
 
-(defoptype double-vec (simple-array double (*))
+(defoptype double-vector (simple-array double (*))
   :width sb-vm:n-word-bits
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-double-float
   :element-type double)
 
-(defoptype sbyte-vec (simple-array sbyte (*))
+(defoptype sbyte-vector (simple-array sbyte (*))
   :width sb-vm:n-word-bits
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-signed-byte-8
   :element-type sbyte)
 
-(defoptype ubyte-vec (simple-array ubyte (*))
+(defoptype ubyte-vector (simple-array ubyte (*))
   :width sb-vm:n-word-bits
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-unsigned-byte-8
   :element-type ubyte)
 
-(defoptype short-vec (simple-array short (*))
+(defoptype short-vector (simple-array short (*))
   :width sb-vm:n-word-bits
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-signed-byte-16
   :element-type short)
 
-(defoptype ushort-vec (simple-array ushort (*))
+(defoptype ushort-vector (simple-array ushort (*))
   :width sb-vm:n-word-bits
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-unsigned-byte-16
   :element-type ushort)
 
-(defoptype int-vec (simple-array int (*))
+(defoptype int-vector (simple-array int (*))
   :width sb-vm:n-word-bits
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-signed-byte-32
   :element-type int)
 
-(defoptype uint-vec (simple-array uint (*))
+(defoptype uint-vector (simple-array uint (*))
   :width sb-vm:n-word-bits
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-unsigned-byte-32
   :element-type uint)
 
-(defoptype long-vec (simple-array long (*))
+(defoptype long-vector (simple-array long (*))
   :width sb-vm:n-word-bits
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-signed-byte-64
   :element-type long)
 
-(defoptype ulong-vec (simple-array ulong (*))
+(defoptype ulong-vector (simple-array ulong (*))
   :width sb-vm:n-word-bits
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-unsigned-byte-64
   :element-type ulong)
 
-(defoptype index-vec (simple-array index (*))
+(defoptype index-vector (simple-array index (*))
   :width sb-vm:n-word-bits
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-unsigned-fixnum
   :element-type index)
 
-(defoptype fixnum-vec (simple-array fixnum (*))
+(defoptype fixnum-vector (simple-array fixnum (*))
   :width sb-vm:n-word-bits
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-fixnum
   :element-type fixnum)
+
+(defoptype intptr-vector (simple-array intptr (*))
+  :width sb-vm:n-word-bits
+  :scs sb-vm::descriptor-reg
+  :vop-type #.(intern (format nil "~a~s"
+                              '#:simple-array-signed-byte-
+                              sb-vm:n-word-bits)
+                      '#:sb-vm)
+  :element-type intptr)
+
+(defoptype uintptr-vector (simple-array uintptr (*))
+  :width sb-vm:n-word-bits
+  :scs sb-vm::descriptor-reg
+  :vop-type #.(intern (format nil "~a~s"
+                              '#:simple-array-unsigned-byte-
+                              sb-vm:n-word-bits)
+                      '#:sb-vm)
+  :element-type uintptr)
 
 (defoptype float4 (simd-pack single)
   :width 128
   :simd-width 4
   :scs sb-vm::single-sse-reg
   :vop-type sb-vm::simd-pack-single
-  :vector-type float-vec
+  :vector-type float-vector
   :element-type single)
 
 (defoptype double2 (simd-pack double)
@@ -323,7 +346,7 @@
   :simd-width 2
   :scs sb-vm::double-sse-reg
   :vop-type sb-vm::simd-pack-double
-  :vector-type double-vec
+  :vector-type double-vector
   :element-type double)
 
 (defoptype sbyte16 (simd-pack sbyte)
@@ -331,7 +354,7 @@
   :simd-width 16
   :scs sb-vm::int-sse-reg
   :vop-type sb-vm::simd-pack-sb8
-  :vector-type sbyte-vec
+  :vector-type sbyte-vector
   :element-type sbyte)
 
 (defoptype ubyte16 (simd-pack ubyte)
@@ -339,7 +362,7 @@
   :simd-width 16
   :scs sb-vm::int-sse-reg
   :vop-type sb-vm::simd-pack-ub8
-  :vector-type ubyte-vec
+  :vector-type ubyte-vector
   :element-type ubyte)
 
 (defoptype short8 (simd-pack short)
@@ -347,7 +370,7 @@
   :simd-width 8
   :scs sb-vm::int-sse-reg
   :vop-type sb-vm::simd-pack-sb16
-  :vector-type short-vec
+  :vector-type short-vector
   :element-type short)
 
 (defoptype ushort8 (simd-pack ushort)
@@ -355,7 +378,7 @@
   :simd-width 8
   :scs sb-vm::int-sse-reg
   :vop-type sb-vm::simd-pack-ub16
-  :vector-type ushort-vec
+  :vector-type ushort-vector
   :element-type ushort)
 
 (defoptype int4 (simd-pack int)
@@ -363,7 +386,7 @@
   :simd-width 4
   :scs sb-vm::int-sse-reg
   :vop-type sb-vm::simd-pack-sb32
-  :vector-type int-vec
+  :vector-type int-vector
   :element-type int)
 
 (defoptype uint4 (simd-pack uint)
@@ -371,7 +394,7 @@
   :simd-width 4
   :scs sb-vm::int-sse-reg
   :vop-type sb-vm::simd-pack-ub32
-  :vector-type uint-vec
+  :vector-type uint-vector
   :element-type uint)
 
 (defoptype long2 (simd-pack long)
@@ -379,7 +402,7 @@
   :simd-width 2
   :scs sb-vm::int-sse-reg
   :vop-type sb-vm::simd-pack-sb64
-  :vector-type long-vec
+  :vector-type long-vector
   :element-type long)
 
 (defoptype ulong2 (simd-pack ulong)
@@ -387,7 +410,7 @@
   :simd-width 2
   :scs sb-vm::int-sse-reg
   :vop-type sb-vm::simd-pack-ub64
-  :vector-type ulong-vec
+  :vector-type ulong-vector
   :element-type ulong)
 
 (defoptype p128 simd-pack
@@ -410,7 +433,7 @@
   :scs sb-vm::descriptor-reg
   :vop-type sb-vm::simple-array-single-float
   :element-type single
-  :vector-type float-vec)
+  :vector-type float-vector)
 
 (deftype p128 ()
   '(or float4 double2 sbyte16 ubyte16 short8 ushort8 int4 uint4 long2 ulong2))

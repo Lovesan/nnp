@@ -56,6 +56,8 @@
    #:single
    #:single!
    #:float!
+   #:float-vector
+   #:float-vector-p
    #:float4
    #:float4p
    #:float4!
@@ -140,6 +142,8 @@
    ;; double2
    #:double
    #:double!
+   #:double-vector
+   #:double-vector-p
    #:double2
    #:double2p
    #:double2!
@@ -205,6 +209,8 @@
    ;; int4
    #:int
    #:int!
+   #:int-vector
+   #:int-vector-p
    #:int4
    #:int4p
    #:int4!
@@ -261,6 +267,8 @@
    ;; long2
    #:long
    #:long!
+   #:long-vector
+   #:long-vector-p
    #:long2
    #:long2p
    #:long2!
@@ -332,8 +340,14 @@
    #:imm7
    #:imm8
    #:index
+   #:index-vector
+   #:index-vector-p
    #:intptr
+   #:intptr-vector
+   #:intptr-vector-p
    #:uintptr
+   #:uintptr-vector
+   #:uintptr-vector-p
    #:pointer))
 
 ;;; vim: ft=lisp et
