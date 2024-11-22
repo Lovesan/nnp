@@ -41,95 +41,63 @@
     ()
   (inst sfence))
 
-(macrolet ((def (type inst ntload-inst ntstore-inst)
-             (let* ((eltype (optype-element-type type))
-                    (vectype (optype-vector-type type))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun vector-ea-form (type index-var &optional constp)
+    (let* ((vector-data-offset (+ (* sb-vm:vector-data-offset
+                                     sb-vm:n-word-bytes)
+                                  (- sb-vm:other-pointer-lowtag)))
+           (eltype (optype-element-type type))
+           (eltype-width-in-bytes (floor (optype-width eltype) 8))
+           (index-scale (optype-index-scale-form type index-var)))
+      (if constp
+        `(ea (+ ,vector-data-offset
+                (* ,eltype-width-in-bytes ,index-var))
+             v)
+        `(ea ,vector-data-offset
+             v ,index-var ,index-scale)))))
+
+(macrolet ((defload (type inst &optional non-temporal-p)
+             (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
                     (simd-width (optype-simd-width type))
-                    (load-name (symbolicate type '#:-load))
-                    (load-vop-name (symbolicate% load-name))
-                    (load-vop-const-name (symbolicate load-vop-name '#:-const))
-                    (aref-name (symbolicate type '#:-aref))
-                    (rma-name (symbolicate type '#:-row-major-aref))
-                    (mem-ref-name (symbolicate type '#:-mem-ref))
-                    (mem-ref-vop-name (symbolicate% mem-ref-name))
-                    (mem-ref-vop-const-name (symbolicate mem-ref-vop-name '#:-const))
-                    (mem-aref-name (symbolicate type '#:-mem-aref))
-                    (mem-aref-vop-name (symbolicate% mem-aref-name))
-                    (mem-aref-vop-const-name (symbolicate mem-aref-vop-name '#:-const))
-                    (store-name (symbolicate type '#:-store))
-                    (store-vop-name (symbolicate% store-name))
-                    (store-vop-const-name (symbolicate store-vop-name '#:-const))
-                    (mem-set-name (symbolicate type '#:-mem-set))
-                    (mem-set-vop-name (symbolicate% mem-set-name))
-                    (mem-set-vop-const-name (symbolicate mem-set-vop-name '#:-const))
-                    (mem-set-aref-name (symbolicate type '#:-mem-set-aref))
-                    (mem-set-aref-vop-name (symbolicate% mem-set-aref-name))
-                    (mem-set-aref-vop-const-name (symbolicate mem-set-aref-vop-name '#:-const))
-                    (ntload-name (symbolicate type '#:-non-temporal-load))
-                    (ntload-vop-name (symbolicate% ntload-name))
-                    (ntload-vop-const-name (symbolicate ntload-vop-name '#:-const))
-                    (ntaref-name (symbolicate type '#:-non-temporal-aref))
-                    (ntmem-ref-name (symbolicate type '#:-non-temporal-mem-ref))
-                    (ntmem-ref-vop-name (symbolicate% ntmem-ref-name))
-                    (ntmem-ref-vop-const-name (symbolicate ntmem-ref-vop-name '#:-const))
-                    (ntmem-aref-name (symbolicate type '#:-non-temporal-mem-aref))
-                    (ntmem-aref-vop-name (symbolicate% ntmem-aref-name))
-                    (ntmem-aref-vop-const-name (symbolicate ntmem-aref-vop-name '#:-const))
-                    (ntstore-name (symbolicate type '#:-non-temporal-store))
-                    (ntstore-vop-name (symbolicate% ntstore-name))
-                    (ntstore-vop-const-name (symbolicate ntstore-vop-name '#:-const))
-                    (ntrmaref-name (symbolicate type '#:-non-temporal-row-major-aref))
-                    (ntmem-set-name (symbolicate type '#:-non-temporal-mem-set))
-                    (ntmem-set-vop-name (symbolicate% ntmem-set-name))
-                    (ntmem-set-vop-const-name (symbolicate ntmem-set-vop-name '#:-const))
-                    (ntmem-set-aref-name (symbolicate type '#:-non-temporal-mem-set-aref))
-                    (ntmem-set-aref-vop-name (symbolicate% ntmem-set-aref-name))
-                    (ntmem-set-aref-vop-const-name
-                      (symbolicate ntmem-set-aref-vop-name '#:-const))
-                    (index-scale (optype-index-scale-form type 'i))
-                    (eltype-width-in-bytes (floor (optype-width eltype) 8))
-                    (ea-form `(ea (+ (* sb-vm:vector-data-offset
-                                        sb-vm:n-word-bytes)
-                                     (- sb-vm:other-pointer-lowtag))
-                                  v i ,index-scale))
-                    (const-ea-form `(ea (+ (* sb-vm:vector-data-offset
-                                              sb-vm:n-word-bytes)
-                                           (* ,eltype-width-in-bytes i)
-                                           (- sb-vm:other-pointer-lowtag))
-                                        v)))
+                    (eltype (optype-element-type type))
+                    (name (symbolicate type prefix '#:-load))
+                    (vop-name (symbolicate% name))
+                    (aref-name (symbolicate type prefix '#:-aref))
+                    (vectype (optype-vector-type type)))
                `(progn
-                  ;; Load
-                  (defvop (,load-vop-name :cost 2)
+                  (defvop (,vop-name :pure nil :cost 2)
                       ((v ,vectype) (i index))
                       ((rv ,type))
                       ()
-                    (inst ,inst rv ,ea-form))
-                  (defvop (,load-vop-const-name :pure nil
-                                                :translate ,load-vop-name
-                                                :cost 1)
+                    (inst ,inst rv ,(vector-ea-form type 'i)))
+                  (defvop (,(symbolicate vop-name '#:-const)
+                           :pure nil
+                           :translate ,vop-name
+                           :cost 1)
                       ((v ,vectype) (i low-index))
                       ((rv ,type))
                       ()
-                    (inst ,inst rv ,const-ea-form))
-                  (definline ,load-name (array index)
+                    (inst ,inst rv ,(vector-ea-form type 'i t)))
+                  (defun ,name (array index)
                     (declare (type (array ,eltype) array)
                              (type index index))
                     (with-bounds-check (array index ,type)
-                      (,load-vop-name array index)))
-                  (define-compiler-macro ,load-name (array index)
+                      (,vop-name array index)))
+                  (define-compiler-macro ,name (array index)
                     (once-only (array index)
                       `(with-bounds-check (,array ,index ,',type)
-                         (,',load-vop-name ,array ,index))))
-                  (definline ,rma-name (array index)
+                         (,',vop-name ,array ,index))))
+                  (definline ,(symbolicate type prefix '#:-row-major-aref)
+                      (array index)
                     (declare (type (array ,eltype) array)
                              (type index index))
-                    (,load-name array (* index ,simd-width)))
+                    (,name array (* index ,simd-width)))
                   (defun ,aref-name (array &rest subscripts)
                     (declare (type (array ,eltype) array))
-                    (,load-name array (apply #'array-row-major-simd-index
-                                             array
-                                             ,simd-width
-                                             subscripts)))
+                    (,name array (apply #'array-row-major-simd-index
+                                        array
+                                        ,simd-width
+                                        subscripts)))
                   (define-compiler-macro ,aref-name (array &rest subscripts)
                     (once-only (array)
                       (with-gensyms (index)
@@ -140,80 +108,100 @@
                           `(let ,subscript-bindings
                              (with-row-major-simd-index
                                  (,index ,array ,',simd-width ,@subscripts)
-                               (,',load-name ,array ,index)))))))
-
-                  ;; mem-ref
-                  (defvop (,mem-ref-vop-name :pure nil :cost 2)
+                               (,',name ,array ,index))))))))))
+           (defmemref (type inst &optional non-temporal-p)
+             (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
+                    (name (symbolicate type prefix '#:-mem-ref))
+                    (vop-name (symbolicate% name)))
+               `(progn
+                  (defvop (,vop-name :pure nil :cost 2)
                       ((p pointer) (i index))
                       ((rv ,type))
                       ()
                     (inst ,inst rv (ea p i)))
-                  (defvop (,mem-ref-vop-const-name :pure nil
-                                                   :translate ,mem-ref-vop-name
-                                                   :cost 1)
+                  (defvop (,(symbolicate vop-name '#:-const)
+                           :pure nil
+                           :translate ,vop-name
+                           :cost 1)
                       ((p pointer) (i low-index))
                       ((rv ,type))
                       ()
                     (inst ,inst rv (ea i p)))
-                  (definline ,mem-ref-name (pointer &optional (offset 0))
+                  (definline ,name (pointer &optional (offset 0))
                     (declare (type pointer pointer)
                              (type index offset))
-                    (,mem-ref-vop-name pointer offset))
-
-                  ;; mem-aref
-                  (defvop (,mem-aref-vop-name :pure nil :cost 2)
+                    (,vop-name pointer offset)))))
+           (defmemaref (type inst &optional non-temporal-p)
+             (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
+                    (name (symbolicate type prefix '#:-mem-aref))
+                    (vop-name (symbolicate% name))
+                    (eltype (optype-element-type type))
+                    (eltype-width-in-bytes (floor (optype-width eltype) 8))
+                    (simd-width (optype-simd-width type)))
+               `(progn
+                  (defvop (,vop-name :pure nil :cost 2)
                       ((p pointer) (i index))
                       ((rv ,type))
                       ()
-                    (inst ,inst rv (ea p i ,index-scale)))
-                  (defvop (,mem-aref-vop-const-name :pure nil
-                                                    :translate ,mem-aref-vop-name
-                                                    :cost 1)
+                    (inst ,inst rv (ea p i ,(optype-index-scale-form type 'i))))
+                  (defvop (,(symbolicate vop-name '#:-const)
+                           :pure nil
+                           :translate ,vop-name
+                           :cost 1)
                       ((p pointer) (i low-index))
                       ((rv ,type))
                       ()
                     (inst ,inst rv (ea (* ,eltype-width-in-bytes i) p)))
-                  (definline ,mem-aref-name (pointer &optional (index 0))
+                  (definline ,name (pointer &optional (index 0))
                     (declare (type pointer pointer)
                              (type index index))
-                    (,mem-aref-vop-name pointer (* index ,simd-width)))
-
-                  ;; Store
-                  (defvop (,store-vop-name :pure nil :cost 2)
+                    (,vop-name pointer (* index ,simd-width))))))
+           (defstore (type inst &optional non-temporal-p)
+             (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
+                    (name (symbolicate type prefix '#:-store))
+                    (vop-name (symbolicate% name))
+                    (vectype (optype-vector-type type))
+                    (eltype (optype-element-type type))
+                    (simd-width (optype-simd-width type))
+                    (aref-name (symbolicate type prefix '#:-aref)))
+               `(progn
+                  (defvop (,vop-name :pure nil :cost 2)
                       ((x ,type :target rv) (v ,vectype) (i index))
                       ((rv ,type))
                       ()
                     (unless (location= rv x)
                       (move rv x))
-                    (inst ,inst ,ea-form rv))
-                  (defvop (,store-vop-const-name :pure nil
-                                                 :translate ,store-vop-name
-                                                 :cost 1)
+                    (inst ,inst ,(vector-ea-form type 'i) rv))
+                  (defvop (,(symbolicate vop-name '#:-const)
+                           :pure nil
+                           :translate ,vop-name
+                           :cost 1)
                       ((x ,type :target rv) (v ,vectype) (i low-index))
                       ((rv ,type))
                       ()
                     (unless (location= rv x)
                       (move rv x))
-                    (inst ,inst ,const-ea-form rv))
-                  (definline ,store-name (new-value array index)
+                    (inst ,inst ,(vector-ea-form type 'i t) rv))
+                  (defun ,name (new-value array index)
                     (declare (type (array ,eltype) array)
                              (type index index))
                     (with-bounds-check (array index ,type)
-                      (,store-vop-name (,type new-value) array index)))
-                  (define-compiler-macro ,store-name (new-value array index)
+                      (,vop-name (,type new-value) array index)))
+                  (define-compiler-macro ,name (new-value array index)
                     (once-only (array index)
                       `(with-bounds-check (,array ,index ,',type)
-                         (,',store-vop-name (,',type ,new-value) ,array ,index))))
-                  (definline (setf ,rma-name) (new-value array index)
+                         (,',vop-name (,',type ,new-value) ,array ,index))))
+                  (definline (setf ,(symbolicate type prefix '#:-row-major-aref))
+                      (new-value array index)
                     (declare (type (array ,eltype) array)
                              (type index index))
-                    (,store-name new-value array (* index ,simd-width)))
+                    (,name new-value array (* index ,simd-width)))
                   (defun (setf ,aref-name) (new-value array &rest subscripts)
                     (declare (type (array ,eltype) array))
-                    (,store-name new-value array (apply #'array-row-major-simd-index
-                                                        array
-                                                        ,simd-width
-                                                        subscripts)))
+                    (,name new-value array (apply #'array-row-major-simd-index
+                                                  array
+                                                  ,simd-width
+                                                  subscripts)))
                   (define-compiler-macro (setf ,aref-name) (new-value array &rest subscripts)
                     (once-only (array)
                       (with-gensyms (index)
@@ -224,226 +212,99 @@
                           `(let ,subscript-bindings
                              (with-row-major-simd-index
                                  (,index ,array ,',simd-width ,@subscripts)
-                               (,',store-name ,new-value ,array ,index)))))))
-
-                  ;; (setf mem-ref)
-                  (defvop (,mem-set-vop-name :pure nil :cost 2)
+                               (,',name ,new-value ,array ,index))))))))))
+           (defmemset (type inst &optional non-temporal-p)
+             (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
+                    (name (symbolicate type prefix '#:-mem-ref))
+                    (vop-name (symbolicate% type prefix '#:-mem-set)))
+               `(progn
+                  (defvop (,vop-name :pure nil :cost 2)
                       ((x ,type :target rv) (p pointer) (i index))
                       ((rv ,type))
                       ()
                     (unless (location= rv x)
                       (move rv x))
                     (inst ,inst (ea p i) x))
-                  (defvop (,mem-set-vop-const-name :pure nil
-                                                   :translate ,mem-set-vop-name
-                                                   :cost 1)
-                      ((x ,type) (p pointer) (i low-index))
-                      ((rv ,type))
-                      ()
-                    (unless (location= rv x)
-                      (move rv x))
-                    (inst ,inst (ea i p) x))
-                  (definline (setf ,mem-ref-name) (new-value pointer &optional (offset 0))
-                    (declare (type pointer pointer)
-                             (type index offset))
-                    (,mem-set-vop-name (,type new-value) pointer offset))
-
-                  ;; (setf mem-aref)
-                  (defvop (,mem-set-aref-vop-name :pure nil :cost 2)
-                      ((x ,type :target rv) (p pointer) (i index))
-                      ((rv ,type))
-                      ()
-                    (unless (location= rv x)
-                      (move rv x))
-                    (inst ,inst (ea p i ,index-scale) x))
-                  (defvop (,mem-set-aref-vop-const-name :pure nil
-                                                        :translate ,mem-set-aref-vop-name
-                                                        :cost 1)
-                      ((x ,type) (p pointer) (i low-index))
-                      ((rv ,type))
-                      ()
-                    (unless (location= rv x)
-                      (move rv x))
-                    (inst ,inst (ea (* ,eltype-width-in-bytes i) p) x))
-                  (definline (setf ,mem-aref-name) (new-value pointer &optional (index 0))
-                    (declare (type pointer pointer)
-                             (type index index))
-                    (,mem-set-vop-name (,type new-value) pointer (* index ,simd-width)))
-
-                  ;; NT load
-                  (defvop (,ntload-vop-name :pure nil :cost 2)
-                      ((v ,vectype) (i index))
-                      ((rv ,type))
-                      ()
-                    (inst ,ntload-inst rv ,ea-form))
-                  (defvop (,ntload-vop-const-name :pure nil
-                                                  :translate ,ntload-vop-name
-                                                  :cost 1)
-                      ((v ,vectype) (i low-index))
-                      ((rv ,type))
-                      ()
-                    (inst ,ntload-inst rv ,const-ea-form))
-                  (definline ,ntload-name (array index)
-                    (declare (type (array ,eltype) array)
-                             (type index index))
-                    (with-bounds-check (array index ,type)
-                      (,ntload-vop-name array index)))
-                  (define-compiler-macro ,ntload-name (array index)
-                    (once-only (array index)
-                      `(with-bounds-check (,array ,index ,',type)
-                         (,',ntload-vop-name ,array ,index))))
-                  (definline ,ntrmaref-name (array index)
-                    (declare (type (array ,eltype) array)
-                             (type index index))
-                    (,ntload-name array (* index ,simd-width)))
-                  (defun ,ntaref-name (array &rest subscripts)
-                    (declare (type (array ,eltype) array))
-                    (,ntload-name array (apply #'array-row-major-simd-index
-                                               array
-                                               ,simd-width
-                                               subscripts)))
-                  (define-compiler-macro ,ntaref-name (array &rest subscripts)
-                    (once-only (array)
-                      (with-gensyms (index)
-                        (let* ((subscript-bindings
-                                 (loop :for subscript :in subscripts
-                                       :collect `(,(gensym (string '#:i)) ,subscript)))
-                               (subscripts (mapcar #'first subscript-bindings)))
-                          `(let ,subscript-bindings
-                             (with-row-major-simd-index
-                                 (,index ,array ,',simd-width ,@subscripts)
-                               (,',ntload-name ,array ,index)))))))
-
-                  ;; NT mem-ref
-                  (defvop (,ntmem-ref-vop-name :pure nil :cost 2)
-                      ((p pointer) (i index))
-                      ((rv ,type))
-                      ()
-                    (inst ,ntload-inst rv (ea p i)))
-                  (defvop (,ntmem-ref-vop-const-name :pure nil
-                                                     :translate ,ntmem-ref-vop-name
-                                                     :cost 1)
-                      ((p pointer) (i low-index))
-                      ((rv ,type))
-                      ()
-                    (inst ,ntload-inst rv (ea i p)))
-                  (definline ,ntmem-ref-name (pointer &optional (offset 0))
-                    (declare (type pointer pointer)
-                             (type index offset))
-                    (,ntmem-ref-vop-name pointer offset))
-
-                  ;; NT mem-aref
-                  (defvop (,ntmem-aref-vop-name :pure nil :cost 2)
-                      ((p pointer) (i index))
-                      ((rv ,type))
-                      ()
-                    (inst ,ntload-inst rv (ea p i ,index-scale)))
-                  (defvop (,ntmem-aref-vop-const-name :pure nil
-                                                      :translate ,ntmem-aref-vop-name
-                                                      :cost 1)
-                      ((p pointer) (i low-index))
-                      ((rv ,type))
-                      ()
-                    (inst ,ntload-inst rv (ea (* ,eltype-width-in-bytes i) p)))
-                  (definline ,ntmem-aref-name (pointer &optional (index 0))
-                    (declare (type pointer pointer)
-                             (type index index))
-                    (,ntmem-aref-vop-name pointer (* index ,simd-width)))
-
-                  ;;  NT store
-                  (defvop (,ntstore-vop-name :pure nil :cost 2)
-                      ((x ,type :target rv) (v ,vectype) (i index))
-                      ((rv ,type))
-                      ()
-                    (unless (location= rv x)
-                      (move rv x))
-                    (inst ,ntstore-inst ,ea-form rv))
-                  (defvop (,ntstore-vop-const-name :pure nil
-                                                   :translate ,ntstore-vop-name
-                                                   :cost 1)
-                      ((x ,type :target rv) (v ,vectype) (i low-index))
-                      ((rv ,type))
-                      ()
-                    (unless (location= rv x)
-                      (move rv x))
-                    (inst ,ntstore-inst ,const-ea-form rv))
-                  (definline ,ntstore-name (new-value array index)
-                    (declare (type (array ,eltype) array)
-                             (type index index))
-                    (with-bounds-check (array index ,type)
-                      (,ntstore-vop-name (,type new-value) array index)))
-                  (define-compiler-macro ,ntstore-name (new-value array index)
-                    (once-only (array index)
-                      `(with-bounds-check (,array ,index ,',type)
-                         (,',ntstore-vop-name (,',type ,new-value) ,array ,index))))
-                  (definline (setf ,ntrmaref-name) (new-value array index)
-                    (declare (type (array ,eltype) array)
-                             (type index index))
-                    (,ntstore-name new-value array (* index ,simd-width)))
-                  (defun (setf ,ntaref-name) (new-value array &rest subscripts)
-                    (declare (type (array ,eltype) array))
-                    (,ntstore-name new-value array (apply #'array-row-major-simd-index
-                                                          array
-                                                          ,simd-width
-                                                          subscripts)))
-                  (define-compiler-macro (setf ,ntaref-name) (new-value array &rest subscripts)
-                    (once-only (array)
-                      (with-gensyms (index)
-                        (let* ((subscript-bindings
-                                 (loop :for subscript :in subscripts
-                                       :collect `(,(gensym (string '#:i)) ,subscript)))
-                               (subscripts (mapcar #'first subscript-bindings)))
-                          `(let ,subscript-bindings
-                             (with-row-major-simd-index
-                                 (,index ,array ,',simd-width ,@subscripts)
-                               (,',ntstore-name ,new-value ,array ,index)))))))
-
-                  ;; NT (setf mem-ref)
-                  (defvop (,ntmem-set-vop-name :pure nil :cost 2)
-                      ((x ,type :target rv) (p pointer) (i index))
-                      ((rv ,type))
-                      ()
-                    (unless (location= rv x)
-                      (move rv x))
-                    (inst ,ntstore-inst (ea p i) x))
-                  (defvop (,ntmem-set-vop-const-name :pure nil
-                                                     :translate ,ntmem-set-vop-name
-                                                     :cost 1)
-                      ((x ,type) (p pointer) (i low-index))
-                      ((rv ,type))
-                      ()
-                    (unless (location= rv x)
-                      (move rv x))
-                    (inst ,ntstore-inst (ea i p) x))
-                  (definline (setf ,ntmem-ref-name) (new-value pointer &optional (offset 0))
-                    (declare (type pointer pointer)
-                             (type index offset))
-                    (,ntmem-set-vop-name (,type new-value) pointer offset))
-
-                  ;; NT (setf mem-aref)
-                  (defvop (,ntmem-set-aref-vop-name :pure nil :cost 2)
-                      ((x ,type :target rv) (p pointer) (i index))
-                      ((rv ,type))
-                      ()
-                    (unless (location= rv x)
-                      (move rv x))
-                    (inst ,ntstore-inst (ea p i ,index-scale) x))
-                  (defvop (,ntmem-set-aref-vop-const-name
+                  (defvop (,(symbolicate vop-name '#:-const)
                            :pure nil
-                           :translate ,ntmem-set-aref-vop-name
+                           :translate ,vop-name
                            :cost 1)
                       ((x ,type) (p pointer) (i low-index))
                       ((rv ,type))
                       ()
                     (unless (location= rv x)
                       (move rv x))
-                    (inst ,ntstore-inst (ea (* ,eltype-width-in-bytes i) p) x))
-                  (definline (setf ,ntmem-aref-name) (new-value pointer &optional (index 0))
+                    (inst ,inst (ea i p) x))
+                  (definline (setf ,name) (new-value pointer &optional (offset 0))
+                    (declare (type pointer pointer)
+                             (type index offset))
+                    (,vop-name (,type new-value) pointer offset)))))
+           (defmemaset (type inst &optional non-temporal-p)
+             (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
+                    (name (symbolicate type prefix '#:-mem-aref))
+                    (vop-name (symbolicate% type prefix '#:-mem-aset))
+                    (eltype (optype-element-type type))
+                    (eltype-width-in-bytes (floor (optype-width eltype) 8))
+                    (simd-width (optype-simd-width type)))
+               `(progn
+                  (defvop (,vop-name :pure nil :cost 2)
+                      ((x ,type :target rv) (p pointer) (i index))
+                      ((rv ,type))
+                      ()
+                    (unless (location= rv x)
+                      (move rv x))
+                    (inst ,inst (ea p i ,(optype-index-scale-form type 'i)) x))
+                  (defvop (,(symbolicate vop-name '#:-const)
+                           :pure nil
+                           :translate ,vop-name
+                           :cost 1)
+                      ((x ,type) (p pointer) (i low-index))
+                      ((rv ,type))
+                      ()
+                    (unless (location= rv x)
+                      (move rv x))
+                    (inst ,inst (ea (* ,eltype-width-in-bytes i) p) x))
+                  (definline (setf ,name) (new-value pointer &optional (index 0))
                     (declare (type pointer pointer)
                              (type index index))
-                    (,ntmem-set-vop-name (,type new-value)
-                                         pointer
-                                         (* index ,simd-width)))))))
+                    (,vop-name (,type new-value) pointer (* index ,simd-width))))))
+           (def (type inst ntload-inst ntstore-inst)
+             `(progn
+                ;; Load
+                (defload ,type ,inst)
+
+                ;; mem-ref
+                (defmemref ,type ,inst)
+
+                ;; mem-aref
+                (defmemaref ,type ,inst)
+
+                ;; Store
+                (defstore ,type ,inst)
+
+                ;; (setf mem-ref)
+                (defmemset ,type ,inst)
+
+                ;; (setf mem-aref)
+                (defmemaset ,type ,inst)
+
+                ;; NT load
+                (defload ,type ,ntload-inst t)
+
+                ;; NT mem-ref
+                (defmemref ,type ,ntload-inst t)
+
+                ;; NT mem-aref
+                (defmemaref ,type ,ntload-inst t)
+
+                ;;  NT store
+                (defstore ,type ,ntstore-inst t)
+
+                ;; NT (setf mem-ref)
+                (defmemset ,type ,ntstore-inst t)
+
+                ;; NT (setf mem-aref)
+                (defmemaset ,type ,ntstore-inst t))))
   (def float4 vmovups vmovntdqa vmovntps)
   (def double2 vmovupd vmovntdqa vmovntpd)
   (def sbyte16 vmovdqu vmovntdqa vmovntdq)
