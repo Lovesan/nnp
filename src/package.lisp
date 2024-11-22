@@ -138,6 +138,9 @@
    #:float4-sin
    #:float4-cos
    #:float4-sincos
+   #:float4-tancot
+   #:float4-tan
+   #:float4-cot
 
    ;; double2
    #:double
@@ -329,6 +332,9 @@
    #:float4x4-r2
    #:float4x4-r3
    #:float4x4-identity
+   #:float2-transform
+   #:float3-transform
+   #:float4-transform
 
    ;; misc
    #:imm1

@@ -409,8 +409,7 @@
          ;; get polynom selection mask
          (poly-mask (float4! (%int4= (%int4-and emm2 (int4 2))
                                      (int4 0))))
-         (z (float4 0))
-         )
+         (z (float4 0)))
     ;; The magic pass: "Extended precision modular arithmetic "
     ;; x = ((x - y * DP1) - y * DP2) - y * DP3;
     (setf v (%float4-fmadd y (float4 +minus-cephes-dp1+) v)
