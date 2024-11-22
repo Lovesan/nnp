@@ -85,7 +85,7 @@
     ()
   (inst vdpps rv v1 v2 mask))
 
-(macrolet ((def (name-prefix mask)
+(macrolet ((def (name-prefix mask result-mask)
              `(progn (definline ,(symbolicate name-prefix '#:-dot) (v1 v2)
                        (let ((v1 (float4 v1))
                              (v2 (float4 v2)))
@@ -111,10 +111,10 @@
                               ;; select qnan or result based on infinite length
                               (tmp1 (%float4-andc1 inf-mask (float4 +float-qnan+)))
                               (tmp2 (%float4-and result inf-mask)))
-                         (%float4-or tmp1 tmp2))))))
-  (def float4 #xFF)
-  (def float3 #x7F)
-  (def float2 #x3F))
+                         (%float4-and (%float4-or tmp1 tmp2) ,result-mask))))))
+  (def float4 #xFF (float4! (make-int4 -1 -1 -1 -1)))
+  (def float3 #x7F (float4! (make-int4 -1 -1 -1 0)))
+  (def float2 #x3F (float4! (make-int4 -1 -1 0 0))))
 
 (definline float4-lerp (v1 v2 z)
   (%float4+ v1 (%float4* (float4 z)
