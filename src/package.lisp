@@ -323,6 +323,14 @@
    #:float4x4-identity
 
    ;; misc
+   #:imm1
+   #:imm2
+   #:imm3
+   #:imm4
+   #:imm5
+   #:imm6
+   #:imm7
+   #:imm8
    #:index
    #:intptr
    #:uintptr

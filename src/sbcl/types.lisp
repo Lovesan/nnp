@@ -126,53 +126,16 @@
                           :immediate-p ,immediate))
        ',name)))
 
-(defoptype imm1 (unsigned-byte 1)
-  :width 1
-  :scs sb-vm::descriptor-reg
-  :vop-type (:constant (unsigned-byte 1))
-  :immediate t)
-
-(defoptype imm2 (unsigned-byte 2)
-  :width 2
-  :scs sb-vm::descriptor-reg
-  :vop-type (:constant (unsigned-byte 2))
-  :immediate t)
-
-(defoptype imm3 (unsigned-byte 3)
-  :width 3
-  :scs sb-vm::descriptor-reg
-  :vop-type (:constant (unsigned-byte 3))
-  :immediate t)
-
-(defoptype imm4 (unsigned-byte 4)
-  :width 4
-  :scs sb-vm::descriptor-reg
-  :vop-type (:constant (unsigned-byte 4))
-  :immediate t)
-
-(defoptype imm5 (unsigned-byte 5)
-  :width 5
-  :scs sb-vm::descriptor-reg
-  :vop-type (:constant (unsigned-byte 5))
-  :immediate t)
-
-(defoptype imm6 (unsigned-byte 6)
-  :width 6
-  :scs sb-vm::descriptor-reg
-  :vop-type (:constant (unsigned-byte 6))
-  :immediate t)
-
-(defoptype imm7 (unsigned-byte 7)
-  :width 7
-  :scs sb-vm::descriptor-reg
-  :vop-type (:constant (unsigned-byte 7))
-  :immediate t)
-
-(defoptype imm8 (unsigned-byte 8)
-  :width 8
-  :scs sb-vm::descriptor-reg
-  :vop-type (:constant (unsigned-byte 8))
-  :immediate t)
+(macrolet ((def ()
+             `(progn
+                ,@(loop :for i :from 1 :to 8 :collect
+                        `(defoptype ,(symbolicate '#:imm (write-to-string i))
+                             (unsigned-byte ,i)
+                           :width ,i
+                           :scs sb-vm::descriptor-reg
+                           :vop-type (:constant (unsigned-byte ,i))
+                           :immediate t)))))
+  (def))
 
 (defoptype single single-float
   :width 32
