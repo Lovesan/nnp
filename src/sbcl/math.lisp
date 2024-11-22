@@ -63,6 +63,13 @@
 (defconstant +coscof-p0+  2.443315711809948d-5)
 (defconstant +coscof-p1+ -1.388731625493765d-3)
 (defconstant +coscof-p2+  4.166664568298827d-2)
+(defconstant +tancof-p0+ 9.38540185543d-3)
+(defconstant +tancof-p1+ 3.11992232697d-3)
+(defconstant +tancof-p2+ 2.44301354525d-2)
+(defconstant +tancof-p3+ 5.34112807005d-2)
+(defconstant +tancof-p4+ 1.33387994085d-1)
+(defconstant +tancof-p5+ 3.33331568548d-1)
+(defconstant +tancot-eps+ 1.0d-4)
 
 (macrolet ((def (name type inst)
              (let ((vop-name (symbolicate% name)))
@@ -387,5 +394,59 @@
            (tmp2 (%float4+ y y2)))
       (values (%float4-xor tmp1 sign-bit-sin)
               (%float4-xor tmp2 sign-bit-cos)))))
+
+(definline float4-tancot (v)
+  (let* ((v (float4 v))
+         (sign-bit v)
+         (v (float4-abs v))
+         (sign-bit (%float4-and sign-bit (float4 +float-negative-zero+)))
+         (y (%float4* v (float4 +cephes-fopi+)))
+         ;; j=(j+1) & (~1) (see the cephes sources)
+         (emm2 (%int4-and (%int4+ (%float4-truncate y)
+                                  (int4 1))
+                          (int4 (lognot 1))))
+         (y (float4-from-int4 emm2))
+         ;; get polynom selection mask
+         (poly-mask (float4! (%int4= (%int4-and emm2 (int4 2))
+                                     (int4 0))))
+         (z (float4 0))
+         )
+    ;; The magic pass: "Extended precision modular arithmetic "
+    ;; x = ((x - y * DP1) - y * DP2) - y * DP3;
+    (setf v (%float4-fmadd y (float4 +minus-cephes-dp1+) v)
+          v (%float4-fmadd y (float4 +minus-cephes-dp2+) v)
+          v (%float4-fmadd y (float4 +minus-cephes-dp3+) v))
+
+    (setf z (%float4* v v)
+          y (float4 +tancof-p0+)
+
+          y (%float4-fmadd y z (float4 +tancof-p1+))
+          y (%float4-fmadd y z (float4 +tancof-p2+))
+          y (%float4-fmadd y z (float4 +tancof-p3+))
+          y (%float4-fmadd y z (float4 +tancof-p4+))
+          y (%float4-fmadd y z (float4 +tancof-p5+))
+          y (%float4* y z)
+          y (%float4-fmadd y v v))
+    ;; select the correct result from the two polynoms
+    (values
+     (let* ((y2 (%float4-xor (%float4/ (float4 1) y)
+                             (float4 +float-negative-zero+)))
+            (y (%float4-and poly-mask y))
+            (y2 (%float4-andc1 poly-mask y2))
+            (y (%float4-or y y2)))
+       ;; update the sign
+       (%float4-xor y sign-bit))
+     (let* ((y2 (%float4-xor y (float4 +float-negative-zero+)))
+            (y (%float4-and poly-mask (%float4/ (float4 1) y)))
+            (y2 (%float4-andc1 poly-mask y2))
+            (y (%float4-or y y2)))
+       ;; update the sign
+       (%float4-xor y sign-bit)))))
+
+(definline float4-tan (v)
+  (nth-value 0 (float4-tancot v)))
+
+(definline float4-cot (v)
+  (nth-value 1 (float4-tancot v)))
 
 ;;; vim: ft=lisp et
