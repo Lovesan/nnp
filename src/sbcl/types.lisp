@@ -97,6 +97,12 @@
     (loop :for v :being :the :hash-value :in -optypes-
           :when (and (= 128 (%optype-width v))
                      (not (eq (%optype-name v) 'p128)))
+            :collect (%optype-name v)))
+
+  (defun optypes-256 ()
+    (loop :for v :being :the :hash-value :in -optypes-
+          :when (and (= 256 (%optype-width v))
+                     (not (eq (%optype-name v) 'p256)))
             :collect (%optype-name v))))
 
 (defmacro defoptype (name real-type
@@ -341,11 +347,27 @@
   :vector-type float-vector
   :element-type single)
 
+(defoptype float8 (simd-pack-256 single)
+  :width 256
+  :simd-width 8
+  :scs sb-vm::single-avx2-reg
+  :vop-type sb-vm::simd-pack-256-single
+  :vector-type float-vector
+  :element-type single)
+
 (defoptype double2 (simd-pack double)
   :width 128
   :simd-width 2
   :scs sb-vm::double-sse-reg
   :vop-type sb-vm::simd-pack-double
+  :vector-type double-vector
+  :element-type double)
+
+(defoptype double4 (simd-pack-256 double)
+  :width 256
+  :simd-width 4
+  :scs sb-vm::double-avx2-reg
+  :vop-type sb-vm::simd-pack-256-double
   :vector-type double-vector
   :element-type double)
 
@@ -357,11 +379,27 @@
   :vector-type sbyte-vector
   :element-type sbyte)
 
+(defoptype sbyte32 (simd-pack-256 sbyte)
+  :width 256
+  :simd-width 32
+  :scs sb-vm::int-avx2-reg
+  :vop-type sb-vm::simd-pack-256-sb8
+  :vector-type sbyte-vector
+  :element-type sbyte)
+
 (defoptype ubyte16 (simd-pack ubyte)
   :width 128
   :simd-width 16
   :scs sb-vm::int-sse-reg
   :vop-type sb-vm::simd-pack-ub8
+  :vector-type ubyte-vector
+  :element-type ubyte)
+
+(defoptype ubyte32 (simd-pack-256 ubyte)
+  :width 256
+  :simd-width 32
+  :scs sb-vm::int-avx2-reg
+  :vop-type sb-vm::simd-pack-256-ub8
   :vector-type ubyte-vector
   :element-type ubyte)
 
@@ -373,11 +411,27 @@
   :vector-type short-vector
   :element-type short)
 
+(defoptype short16 (simd-pack-256 short)
+  :width 256
+  :simd-width 16
+  :scs sb-vm::int-avx2-reg
+  :vop-type sb-vm::simd-pack-256-sb16
+  :vector-type short-vector
+  :element-type short)
+
 (defoptype ushort8 (simd-pack ushort)
   :width 128
   :simd-width 8
   :scs sb-vm::int-sse-reg
   :vop-type sb-vm::simd-pack-ub16
+  :vector-type ushort-vector
+  :element-type ushort)
+
+(defoptype ushort16 (simd-pack-256 ushort)
+  :width 256
+  :simd-width 16
+  :scs sb-vm::int-avx2-reg
+  :vop-type sb-vm::simd-pack-256-ub16
   :vector-type ushort-vector
   :element-type ushort)
 
@@ -389,11 +443,27 @@
   :vector-type int-vector
   :element-type int)
 
+(defoptype int8 (simd-pack-256 int)
+  :width 256
+  :simd-width 8
+  :scs sb-vm::int-avx2-reg
+  :vop-type sb-vm::simd-pack-256-sb32
+  :vector-type int-vector
+  :element-type int)
+
 (defoptype uint4 (simd-pack uint)
   :width 128
   :simd-width 4
   :scs sb-vm::int-sse-reg
   :vop-type sb-vm::simd-pack-ub32
+  :vector-type uint-vector
+  :element-type uint)
+
+(defoptype uint8 (simd-pack-256 uint)
+  :width 256
+  :simd-width 8
+  :scs sb-vm::int-avx2-reg
+  :vop-type sb-vm::simd-pack-256-ub32
   :vector-type uint-vector
   :element-type uint)
 
@@ -405,11 +475,27 @@
   :vector-type long-vector
   :element-type long)
 
+(defoptype long4 (simd-pack-256 long)
+  :width 256
+  :simd-width 4
+  :scs sb-vm::int-avx2-reg
+  :vop-type sb-vm::simd-pack-256-sb64
+  :vector-type long-vector
+  :element-type long)
+
 (defoptype ulong2 (simd-pack ulong)
   :width 128
   :simd-width 2
   :scs sb-vm::int-sse-reg
   :vop-type sb-vm::simd-pack-ub64
+  :vector-type ulong-vector
+  :element-type ulong)
+
+(defoptype ulong4 (simd-pack-256 ulong)
+  :width 256
+  :simd-width 4
+  :scs sb-vm::int-avx2-reg
+  :vop-type sb-vm::simd-pack-256-ub64
   :vector-type ulong-vector
   :element-type ulong)
 
@@ -419,6 +505,15 @@
         sb-vm::double-sse-reg
         sb-vm::int-sse-reg)
   :vop-type simd-pack
+  :element-type t
+  :deftype nil)
+
+(defoptype p256 simd-pack
+  :width 256
+  :scs (sb-vm::single-avx2-reg
+        sb-vm::double-avx2-reg
+        sb-vm::int-avx2-reg)
+  :vop-type simd-pack-256
   :element-type t
   :deftype nil)
 
@@ -438,6 +533,9 @@
 (deftype p128 ()
   '(or float4 double2 sbyte16 ubyte16 short8 ushort8 int4 uint4 long2 ulong2))
 
+(deftype p256 ()
+  '(or float8 double4 sbyte32 ubyte32 short16 ushort16 int8 uint8 long4 ulong4))
+
 (defmacro with-primitive-argument ((symbol type) &body body)
   (cond
     ((optype-immediate-p type)
@@ -450,6 +548,10 @@
        (p128
         `(etypecase ,symbol
            ,@(loop :for type :in (optypes-128)
+                   :collect `(,type ,@body))))
+       (p256
+        `(etypecase ,symbol
+           ,@(loop :for type :in (optypes-256)
                    :collect `(,type ,@body))))
        (t `(progn ,@body))))
     (t (error "Ill-formed type: ~s" type))))

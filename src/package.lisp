@@ -50,7 +50,8 @@
                 #:emit-label)
   #+sbcl
   (:import-from #:sb-ext
-                #:simd-pack)
+                #:simd-pack
+                #:simd-pack-256)
   (:export
    ;; float4
    #:single
@@ -142,6 +143,73 @@
    #:float4-tan
    #:float4-cot
 
+   ;; float8
+   #:float8
+   #:float8p
+   #:float8!
+   #:make-float8
+   #:float8-values
+   #:float8-permute
+   #:float8-shuffle
+   #:float8-interleave-low
+   #:float8-interleave-high
+   #:float8-extract-low
+   #:float8-extract-high
+   #:float8-insert-low
+   #:float8-insert-high
+   #:float8-load
+   #:float8-row-major-aref
+   #:float8-aref
+   #:float8-mem-ref
+   #:float8-mem-aref
+   #:float8-store
+   #:float8-non-temporal-load
+   #:float8-non-temporal-row-major-aref
+   #:float8-non-temporal-aref
+   #:float8-non-temporal-mem-ref
+   #:float8-non-temporal-mem-aref
+   #:float8-non-temporal-store
+   #:float8+
+   #:float8*
+   #:float8-min
+   #:float8-max
+   #:float8-and
+   #:float8-or
+   #:float8-xor
+   #:float8-incf
+   #:float8-decf
+   #:float8-clamp
+   #:float8-
+   #:float8/
+   #:float8-h+
+   #:float8-h-
+   #:float8-h*
+   #:float8-hmax
+   #:float8-hmin
+   #:float8-hand
+   #:float8-hor
+   #:float8-hxor
+   #:float8-fmadd
+   #:float8-fnmadd
+   #:float8-fmsub
+   #:float8-fmaddsub
+   #:float8-fmsubadd
+   #:float8-andc1
+   #:float8-not
+   #:float8=
+   #:float8<
+   #:float8>
+   #:float8<=
+   #:float8>=
+   #:float8/=
+   #:float8-truncate
+   #:float8-round
+   #:float8-floor
+   #:float8-ceiling
+   #:float8-abs
+   #:float8-sqrt
+   #:float8-rsqrt
+
    ;; double2
    #:double
    #:double!
@@ -209,6 +277,73 @@
    #:double2-sqrt
    #:double2-rsqrt
 
+   ;; float8
+   #:double4
+   #:double4p
+   #:double4!
+   #:make-double4
+   #:double4-values
+   #:double4-permute
+   #:double4-shuffle
+   #:double4-interleave-low
+   #:double4-interleave-high
+   #:double4-extract-low
+   #:double4-extract-high
+   #:double4-insert-low
+   #:double4-insert-high
+   #:double4-load
+   #:double4-row-major-aref
+   #:double4-aref
+   #:double4-mem-ref
+   #:double4-mem-aref
+   #:double4-store
+   #:double4-non-temporal-load
+   #:double4-non-temporal-row-major-aref
+   #:double4-non-temporal-aref
+   #:double4-non-temporal-mem-ref
+   #:double4-non-temporal-mem-aref
+   #:double4-non-temporal-store
+   #:double4+
+   #:double4*
+   #:double4-min
+   #:double4-max
+   #:double4-and
+   #:double4-or
+   #:double4-xor
+   #:double4-incf
+   #:double4-decf
+   #:double4-clamp
+   #:double4-
+   #:double4/
+   #:double4-h+
+   #:double4-h-
+   #:double4-h*
+   #:double4-hmax
+   #:double4-hmin
+   #:double4-hand
+   #:double4-hor
+   #:double4-hxor
+   #:double4-fmadd
+   #:double4-fnmadd
+   #:double4-fmsub
+   #:double4-fmaddsub
+   #:double4-fmsubadd
+   #:double4-andc1
+   #:double4-not
+   #:double4=
+   #:double4<
+   #:double4>
+   #:double4<=
+   #:double4>=
+   #:double4/=
+   #:double4-truncate
+   #:double4-round
+   #:double4-floor
+   #:double4-ceiling
+   #:double4-abs
+   #:double4-sqrt
+   #:double4-rsqrt
+
    ;; int4
    #:int
    #:int!
@@ -267,6 +402,63 @@
    #:int4/=
    #:int4-abs
 
+   ;; int8
+   #:int8
+   #:int8p
+   #:int8!
+   #:make-int8
+   #:int8-values
+   #:int8-permute
+   #:int8-shuffle
+   #:int8-interleave-low
+   #:int8-interleave-high
+   #:int8-extract-low
+   #:int8-extract-high
+   #:int8-insert-low
+   #:int8-insert-high
+   #:int8-load
+   #:int8-row-major-aref
+   #:int8-aref
+   #:int8-mem-ref
+   #:int8-mem-aref
+   #:int8-store
+   #:int8-non-temporal-load
+   #:int8-non-temporal-row-major-aref
+   #:int8-non-temporal-aref
+   #:int8-non-temporal-mem-ref
+   #:int8-non-temporal-mem-aref
+   #:int8-non-temporal-store
+   #:int8+
+   #:int8*
+   #:int8-min
+   #:int8-max
+   #:int8-and
+   #:int8-or
+   #:int8-xor
+   #:int8-incf
+   #:int8-decf
+   #:int8-clamp
+   #:int8-shiftl
+   #:int8-shiftr
+   #:int8-
+   #:int8-h+
+   #:int8-h-
+   #:int8-h*
+   #:int8-hmax
+   #:int8-hmin
+   #:int8-hand
+   #:int8-hor
+   #:int8-hxor
+   #:int8-andc1
+   #:int8-not
+   #:int8=
+   #:int8<
+   #:int8>
+   #:int8<=
+   #:int8>=
+   #:int8/=
+   #:int8-abs
+
    ;; long2
    #:long
    #:long!
@@ -323,6 +515,63 @@
    #:long2>=
    #:long2/=
    #:long2-abs
+
+   ;; long4
+   #:long4
+   #:long4p
+   #:long4!
+   #:make-long4
+   #:long4-values
+   #:long4-permute
+   #:long4-shuffle
+   #:long4-interleave-low
+   #:long4-interleave-high
+   #:long4-extract-low
+   #:long4-extract-high
+   #:long4-insert-low
+   #:long4-insert-high
+   #:long4-load
+   #:long4-row-major-aref
+   #:long4-aref
+   #:long4-mem-ref
+   #:long4-mem-aref
+   #:long4-store
+   #:long4-non-temporal-load
+   #:long4-non-temporal-row-major-aref
+   #:long4-non-temporal-aref
+   #:long4-non-temporal-mem-ref
+   #:long4-non-temporal-mem-aref
+   #:long4-non-temporal-store
+   #:long4+
+   #:long4*
+   #:long4-min
+   #:long4-max
+   #:long4-and
+   #:long4-or
+   #:long4-xor
+   #:long4-incf
+   #:long4-decf
+   #:long4-clamp
+   #:long4-shiftl
+   #:long4-shiftr
+   #:long4-
+   #:long4-h+
+   #:long4-h-
+   #:long4-h*
+   #:long4-hmax
+   #:long4-hmin
+   #:long4-hand
+   #:long4-hor
+   #:long4-hxor
+   #:long4-andc1
+   #:long4-not
+   #:long4=
+   #:long4<
+   #:long4>
+   #:long4<=
+   #:long4>=
+   #:long4/=
+   #:long4-abs
 
    ;; float4x4
    #:make-float4x4

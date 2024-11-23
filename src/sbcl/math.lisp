@@ -80,15 +80,27 @@
                        (definline ,name (v)
                          (,vop-name (,type v)))))))
   (def float4-sqrt float4 vsqrtps)
+  (def float8-sqrt float8 vsqrtps)
   (def double2-sqrt double2 vsqrtpd)
-  (def float4-rsqrt float4 vrsqrtps))
+  (def double4-sqrt double4 vsqrtpd)
+  (def float4-rsqrt float4 vrsqrtps)
+  (def float8-rsqrt float8 vrsqrtps))
 
 (definline double2-rsqrt (v)
   (let ((v (double2 v)))
     (%double2/ (double2 1) (%double2-sqrt v))))
 
+(definline double4-rsqrt (v)
+  (let ((v (double4 v)))
+    (%double4/ (double4 1) (%double4-sqrt v))))
+
 (defvop %float4-dot ((v1 float4) (v2 float4) (mask imm8))
     ((rv float4))
+    ()
+  (inst vdpps rv v1 v2 mask))
+
+(defvop %float8-dot ((v1 float8) (v2 float8) (mask imm8))
+    ((rv float8))
     ()
   (inst vdpps rv v1 v2 mask))
 
@@ -124,11 +136,13 @@
   (def float2 #x3F (float4! (make-int4 -1 -1 0 0))))
 
 (definline float4-lerp (v1 v2 z)
-  (%float4+ v1 (%float4* (float4 z)
-                         (float4- v2 v2))))
+  (%float4+ (float4 v1)
+            (%float4* (float4 z)
+                      (%float4- (float4 v2)
+                                (float4 v1)))))
 
 (definline float4-saturate (v)
-  (float4-clamp v (float4 0) (float4 1)))
+  (float4-clamp v 0 1))
 
 (definline float4-scale (v s)
   (float4* v s))
