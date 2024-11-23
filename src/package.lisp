@@ -151,6 +151,7 @@
    #:float8-values
    #:float8-permute
    #:float8-shuffle
+   #:float8-shuffle*
    #:float8-interleave-low
    #:float8-interleave-high
    #:float8-extract-low
@@ -277,7 +278,7 @@
    #:double2-sqrt
    #:double2-rsqrt
 
-   ;; float8
+   ;; double4
    #:double4
    #:double4p
    #:double4!
@@ -285,6 +286,7 @@
    #:double4-values
    #:double4-permute
    #:double4-shuffle
+   #:double4-shuffle*
    #:double4-interleave-low
    #:double4-interleave-high
    #:double4-extract-low
@@ -410,6 +412,7 @@
    #:int8-values
    #:int8-permute
    #:int8-shuffle
+   #:int8-shuffle*
    #:int8-interleave-low
    #:int8-interleave-high
    #:int8-extract-low
@@ -524,6 +527,7 @@
    #:long4-values
    #:long4-permute
    #:long4-shuffle
+   #:long4-shuffle*
    #:long4-interleave-low
    #:long4-interleave-high
    #:long4-extract-low
@@ -584,6 +588,9 @@
    #:float2-transform
    #:float3-transform
    #:float4-transform
+   #:float4x4*
+   #:float4x4-transpose
+   #:float4-tensor-product
 
    ;; misc
    #:imm1
