@@ -610,6 +610,9 @@
    #:uintptr
    #:uintptr-vector
    #:uintptr-vector-p
-   #:pointer))
+   #:pointer
+   #:load-fence
+   #:store-fence
+   #:memory-fence))
 
 ;;; vim: ft=lisp et

@@ -38,7 +38,7 @@
                 :serial t
                 :components ((:file "package")
                              (:module "sbcl"
-                              :if-feature :sbcl
+                              :if-feature (:and :sbcl :x86-64)
                               :serial t
                               :components ((:file "utils")
                                            (:file "types")
