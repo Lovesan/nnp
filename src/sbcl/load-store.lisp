@@ -42,6 +42,18 @@
   (inst sfence))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun vector-ea (type base index &optional constp)
+    (let* ((vector-data-offset (+ (* sb-vm:vector-data-offset
+                                     sb-vm:n-word-bytes)
+                                  (- sb-vm:other-pointer-lowtag)))
+           (eltype (optype-element-type type))
+           (eltype-width-in-bytes (floor (optype-width eltype) 8)))
+      (if constp
+        (ea (+ vector-data-offset
+               (* eltype-width-in-bytes index))
+            base)
+        (ea vector-data-offset
+            base index (optype-index-scale type index)))))
   (defun vector-ea-form (type index-var &optional constp)
     (let* ((vector-data-offset (+ (* sb-vm:vector-data-offset
                                      sb-vm:n-word-bytes)
@@ -58,11 +70,8 @@
 
 (macrolet ((defload (type inst &optional non-temporal-p)
              (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
-                    (simd-width (optype-simd-width type))
-                    (eltype (optype-element-type type))
                     (name (symbolicate type prefix '#:-load))
                     (vop-name (symbolicate% name))
-                    (aref-name (symbolicate type prefix '#:-aref))
                     (vectype (optype-vector-type type)))
                `(progn
                   (defvop (,vop-name :pure nil :cost 2)
@@ -77,38 +86,7 @@
                       ((v ,vectype) (i low-index))
                       ((rv ,type))
                       ()
-                    (inst ,inst rv ,(vector-ea-form type 'i t)))
-                  (defun ,name (array index)
-                    (declare (type (array ,eltype) array)
-                             (type index index))
-                    (with-bounds-check (array index ,type)
-                      (,vop-name array index)))
-                  (define-compiler-macro ,name (array index)
-                    (once-only (array index)
-                      `(with-bounds-check (,array ,index ,',type)
-                         (,',vop-name ,array ,index))))
-                  (definline ,(symbolicate type prefix '#:-row-major-aref)
-                      (array index)
-                    (declare (type (array ,eltype) array)
-                             (type index index))
-                    (,name array (* index ,simd-width)))
-                  (defun ,aref-name (array &rest subscripts)
-                    (declare (type (array ,eltype) array))
-                    (,name array (apply #'array-row-major-simd-index
-                                        array
-                                        ,simd-width
-                                        subscripts)))
-                  (define-compiler-macro ,aref-name (array &rest subscripts)
-                    (once-only (array)
-                      (with-gensyms (index)
-                        (let* ((subscript-bindings
-                                 (loop :for subscript :in subscripts
-                                       :collect `(,(gensym (string '#:i)) ,subscript)))
-                               (subscripts (mapcar #'first subscript-bindings)))
-                          `(let ,subscript-bindings
-                             (with-row-major-simd-index
-                                 (,index ,array ,',simd-width ,@subscripts)
-                               (,',name ,array ,index))))))))))
+                    (inst ,inst rv ,(vector-ea-form type 'i t))))))
            (defmemref (type inst &optional non-temporal-p)
              (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
                     (name (symbolicate type prefix '#:-mem-ref))
@@ -126,18 +104,13 @@
                       ((p pointer) (i low-index))
                       ((rv ,type))
                       ()
-                    (inst ,inst rv (ea i p)))
-                  (definline ,name (pointer &optional (offset 0))
-                    (declare (type pointer pointer)
-                             (type index offset))
-                    (,vop-name pointer offset)))))
+                    (inst ,inst rv (ea i p))))))
            (defmemaref (type inst &optional non-temporal-p)
              (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
                     (name (symbolicate type prefix '#:-mem-aref))
                     (vop-name (symbolicate% name))
                     (eltype (optype-element-type type))
-                    (eltype-width-in-bytes (floor (optype-width eltype) 8))
-                    (simd-width (optype-simd-width type)))
+                    (eltype-width-in-bytes (floor (optype-width eltype) 8)))
                `(progn
                   (defvop (,vop-name :pure nil :cost 2)
                       ((p pointer) (i index))
@@ -151,26 +124,18 @@
                       ((p pointer) (i low-index))
                       ((rv ,type))
                       ()
-                    (inst ,inst rv (ea (* ,eltype-width-in-bytes i) p)))
-                  (definline ,name (pointer &optional (index 0))
-                    (declare (type pointer pointer)
-                             (type index index))
-                    (,vop-name pointer (* index ,simd-width))))))
+                    (inst ,inst rv (ea (* ,eltype-width-in-bytes i) p))))))
            (defstore (type inst &optional non-temporal-p)
              (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
                     (name (symbolicate type prefix '#:-store))
                     (vop-name (symbolicate% name))
-                    (vectype (optype-vector-type type))
-                    (eltype (optype-element-type type))
-                    (simd-width (optype-simd-width type))
-                    (aref-name (symbolicate type prefix '#:-aref)))
+                    (vectype (optype-vector-type type)))
                `(progn
                   (defvop (,vop-name :pure nil :cost 2)
                       ((x ,type :target rv) (v ,vectype) (i index))
                       ((rv ,type))
                       ()
-                    (unless (location= rv x)
-                      (move rv x))
+                    (move rv x)
                     (inst ,inst ,(vector-ea-form type 'i) rv))
                   (defvop (,(symbolicate vop-name '#:-const)
                            :pure nil
@@ -179,51 +144,17 @@
                       ((x ,type :target rv) (v ,vectype) (i low-index))
                       ((rv ,type))
                       ()
-                    (unless (location= rv x)
-                      (move rv x))
-                    (inst ,inst ,(vector-ea-form type 'i t) rv))
-                  (defun ,name (new-value array index)
-                    (declare (type (array ,eltype) array)
-                             (type index index))
-                    (with-bounds-check (array index ,type)
-                      (,vop-name (,type new-value) array index)))
-                  (define-compiler-macro ,name (new-value array index)
-                    (once-only (array index)
-                      `(with-bounds-check (,array ,index ,',type)
-                         (,',vop-name (,',type ,new-value) ,array ,index))))
-                  (definline (setf ,(symbolicate type prefix '#:-row-major-aref))
-                      (new-value array index)
-                    (declare (type (array ,eltype) array)
-                             (type index index))
-                    (,name new-value array (* index ,simd-width)))
-                  (defun (setf ,aref-name) (new-value array &rest subscripts)
-                    (declare (type (array ,eltype) array))
-                    (,name new-value array (apply #'array-row-major-simd-index
-                                                  array
-                                                  ,simd-width
-                                                  subscripts)))
-                  (define-compiler-macro (setf ,aref-name) (new-value array &rest subscripts)
-                    (once-only (array)
-                      (with-gensyms (index)
-                        (let* ((subscript-bindings
-                                 (loop :for subscript :in subscripts
-                                       :collect `(,(gensym (string '#:i)) ,subscript)))
-                               (subscripts (mapcar #'first subscript-bindings)))
-                          `(let ,subscript-bindings
-                             (with-row-major-simd-index
-                                 (,index ,array ,',simd-width ,@subscripts)
-                               (,',name ,new-value ,array ,index))))))))))
+                    (move rv x)
+                    (inst ,inst ,(vector-ea-form type 'i t) rv)))))
            (defmemset (type inst &optional non-temporal-p)
              (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
-                    (name (symbolicate type prefix '#:-mem-ref))
                     (vop-name (symbolicate% type prefix '#:-mem-set)))
                `(progn
                   (defvop (,vop-name :pure nil :cost 2)
                       ((x ,type :target rv) (p pointer) (i index))
                       ((rv ,type))
                       ()
-                    (unless (location= rv x)
-                      (move rv x))
+                    (move rv x)
                     (inst ,inst (ea p i) x))
                   (defvop (,(symbolicate vop-name '#:-const)
                            :pure nil
@@ -232,27 +163,19 @@
                       ((x ,type) (p pointer) (i low-index))
                       ((rv ,type))
                       ()
-                    (unless (location= rv x)
-                      (move rv x))
-                    (inst ,inst (ea i p) x))
-                  (definline (setf ,name) (new-value pointer &optional (offset 0))
-                    (declare (type pointer pointer)
-                             (type index offset))
-                    (,vop-name (,type new-value) pointer offset)))))
+                    (move rv x)
+                    (inst ,inst (ea i p) x)))))
            (defmemaset (type inst &optional non-temporal-p)
              (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
-                    (name (symbolicate type prefix '#:-mem-aref))
                     (vop-name (symbolicate% type prefix '#:-mem-aset))
                     (eltype (optype-element-type type))
-                    (eltype-width-in-bytes (floor (optype-width eltype) 8))
-                    (simd-width (optype-simd-width type)))
+                    (eltype-width-in-bytes (floor (optype-width eltype) 8)))
                `(progn
                   (defvop (,vop-name :pure nil :cost 2)
                       ((x ,type :target rv) (p pointer) (i index))
                       ((rv ,type))
                       ()
-                    (unless (location= rv x)
-                      (move rv x))
+                    (move rv x)
                     (inst ,inst (ea p i ,(optype-index-scale-form type 'i)) x))
                   (defvop (,(symbolicate vop-name '#:-const)
                            :pure nil
@@ -261,13 +184,8 @@
                       ((x ,type) (p pointer) (i low-index))
                       ((rv ,type))
                       ()
-                    (unless (location= rv x)
-                      (move rv x))
-                    (inst ,inst (ea (* ,eltype-width-in-bytes i) p) x))
-                  (definline (setf ,name) (new-value pointer &optional (index 0))
-                    (declare (type pointer pointer)
-                             (type index index))
-                    (,vop-name (,type new-value) pointer (* index ,simd-width))))))
+                    (move rv x)
+                    (inst ,inst (ea (* ,eltype-width-in-bytes i) p) x)))))
            (def (type inst ntload-inst ntstore-inst)
              `(progn
                 ;; Load
@@ -325,5 +243,645 @@
   (def long4 vmovdqu vmovntdqa vmovntdq)
   (def ulong2 vmovdqu vmovntdqa vmovntdq)
   (def ulong4 vmovdqu vmovntdqa vmovntdq))
+
+(macrolet ((defload (type &optional non-temporal-p)
+             (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
+                    (simd-width (optype-simd-width type))
+                    (eltype (optype-element-type type))
+                    (name (symbolicate type prefix '#:-load))
+                    (vop-name (symbolicate% name))
+                    (aref-name (symbolicate type prefix '#:-aref)))
+               `(progn
+                  (defun ,name (array index)
+                    (declare (type (array ,eltype) array)
+                             (type index index))
+                    (with-bounds-check (array index ,simd-width)
+                      (,vop-name array index)))
+                  (define-compiler-macro ,name (array index)
+                    (once-only (array index)
+                      `(with-bounds-check (,array ,index ,',simd-width)
+                         (,',vop-name ,array ,index))))
+                  (definline ,(symbolicate type prefix '#:-row-major-aref)
+                      (array index)
+                    (declare (type (array ,eltype) array)
+                             (type index index))
+                    (,name array (* index ,simd-width)))
+                  (defun ,aref-name (array &rest subscripts)
+                    (declare (type (array ,eltype) array))
+                    (,name array (apply #'array-row-major-simd-index
+                                        array
+                                        ,simd-width
+                                        subscripts)))
+                  (define-compiler-macro ,aref-name (array &rest subscripts)
+                    (once-only (array)
+                      (with-gensyms (index)
+                        (let* ((subscript-bindings
+                                 (loop :for subscript :in subscripts
+                                       :collect `(,(gensym (string '#:i)) ,subscript)))
+                               (subscripts (mapcar #'first subscript-bindings)))
+                          `(let ,subscript-bindings
+                             (with-row-major-simd-index
+                                 (,index ,array ,',simd-width ,@subscripts)
+                               (,',name ,array ,index))))))))))
+           (defmemref (type &optional non-temporal-p)
+             (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
+                    (name (symbolicate type prefix '#:-mem-ref))
+                    (vop-name (symbolicate% name)))
+               `(definline ,name (pointer &optional (offset 0))
+                  (declare (type pointer pointer)
+                           (type index offset))
+                  (,vop-name pointer offset))))
+           (defmemaref (type &optional non-temporal-p)
+             (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
+                    (name (symbolicate type prefix '#:-mem-aref))
+                    (vop-name (symbolicate% name))
+                    (simd-width (optype-simd-width type)))
+               `(definline ,name (pointer &optional (index 0))
+                  (declare (type pointer pointer)
+                           (type index index))
+                  (,vop-name pointer (* index ,simd-width)))))
+           (defstore (type &optional non-temporal-p)
+             (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
+                    (name (symbolicate type prefix '#:-store))
+                    (vop-name (symbolicate% name))
+                    (eltype (optype-element-type type))
+                    (simd-width (optype-simd-width type))
+                    (aref-name (symbolicate type prefix '#:-aref)))
+               `(progn
+                  (defun ,name (new-value array index)
+                    (declare (type (array ,eltype) array)
+                             (type index index))
+                    (let ((new-value (,type new-value)))
+                      (with-bounds-check (array index ,simd-width)
+                        (,vop-name new-value array index))))
+                  (define-compiler-macro ,name (new-value array index)
+                    (once-only (array index)
+                      (with-gensyms (value)
+                        `(let ((,value (,',type ,new-value)))
+                           (with-bounds-check (,array ,index ,',simd-width)
+                             (,',vop-name ,value ,array ,index))))))
+                  (definline (setf ,(symbolicate type prefix '#:-row-major-aref))
+                      (new-value array index)
+                    (declare (type (array ,eltype) array)
+                             (type index index))
+                    (,name new-value array (* index ,simd-width)))
+                  (defun (setf ,aref-name) (new-value array &rest subscripts)
+                    (declare (type (array ,eltype) array))
+                    (,name new-value array (apply #'array-row-major-simd-index
+                                                  array
+                                                  ,simd-width
+                                                  subscripts)))
+                  (define-compiler-macro (setf ,aref-name) (new-value array &rest subscripts)
+                    (once-only (array)
+                      (with-gensyms (index)
+                        (let* ((subscript-bindings
+                                 (loop :for subscript :in subscripts
+                                       :collect `(,(gensym (string '#:i)) ,subscript)))
+                               (subscripts (mapcar #'first subscript-bindings)))
+                          `(let ,subscript-bindings
+                             (with-row-major-simd-index
+                                 (,index ,array ,',simd-width ,@subscripts)
+                               (,',name ,new-value ,array ,index))))))))))
+           (defmemset (type &optional non-temporal-p)
+             (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
+                    (name (symbolicate type prefix '#:-mem-ref))
+                    (vop-name (symbolicate% type prefix '#:-mem-set)))
+               `(definline (setf ,name) (new-value pointer &optional (offset 0))
+                  (declare (type pointer pointer)
+                           (type index offset))
+                  (,vop-name (,type new-value) pointer offset))))
+           (defmemaset (type &optional non-temporal-p)
+             (let* ((prefix (if non-temporal-p '#:-non-temporal ""))
+                    (name (symbolicate type prefix '#:-mem-aref))
+                    (vop-name (symbolicate% type prefix '#:-mem-aset))
+                    (simd-width (optype-simd-width type)))
+               `(definline (setf ,name) (new-value pointer &optional (index 0))
+                  (declare (type pointer pointer)
+                           (type index index))
+                  (,vop-name (,type new-value) pointer (* index ,simd-width)))))
+           (def (type)
+             `(progn
+                ;; Load
+                (defload ,type)
+
+                ;; mem-ref
+                (defmemref ,type)
+
+                ;; mem-aref
+                (defmemaref ,type)
+
+                ;; Store
+                (defstore ,type)
+
+                ;; (setf mem-ref)
+                (defmemset ,type)
+
+                ;; (setf mem-aref)
+                (defmemaset ,type)
+
+                ;; NT load
+                (defload ,type t)
+
+                ;; NT mem-ref
+                (defmemref ,type t)
+
+                ;; NT mem-aref
+                (defmemaref ,type t)
+
+                ;;  NT store
+                (defstore ,type t)
+
+                ;; NT (setf mem-ref)
+                (defmemset ,type t)
+
+                ;; NT (setf mem-aref)
+                (defmemaset ,type t))))
+  (def float4)
+  (def float8)
+  (def double2)
+  (def double4)
+  (def sbyte16)
+  (def sbyte32)
+  (def ubyte16)
+  (def ubyte32)
+  (def short8)
+  (def short16)
+  (def ushort8)
+  (def ushort16)
+  (def int4)
+  (def int8)
+  (def uint4)
+  (def uint8)
+  (def long2)
+  (def long4)
+  (def ulong2)
+  (def ulong4))
+
+(defvop (%float3-load :pure nil
+                      :cost 2)
+    ((v float-vector)
+     (i index))
+    ((rv float4))
+    ((mask float4)
+     (zero long))
+  (inst vpcmpeqd mask mask mask)
+  (inst xor zero zero)
+  (inst vpinsrd mask mask zero 3)
+  (inst vmaskmovps rv mask (vector-ea 'float4 v i)))
+
+(defvop (%float3-load-const :pure nil
+                            :cost 1
+                            :translate %float3-load)
+    ((v float-vector)
+     (i low-index))
+    ((rv float4))
+    ((mask float4)
+     (zero long))
+  (inst vpcmpeqd mask mask mask)
+  (inst xor zero zero)
+  (inst vpinsrd mask mask zero 3)
+  (inst vmaskmovps rv mask (vector-ea 'float4 v i t)))
+
+(defvop (%float3-mem-ref :pure nil
+                         :cost 2)
+    ((p pointer)
+     (i index))
+    ((rv float4))
+    ((mask float4)
+     (zero long))
+  (inst vpcmpeqd mask mask mask)
+  (inst xor zero zero)
+  (inst vpinsrd mask mask zero 3)
+  (inst vmaskmovps rv mask (ea p i)))
+
+(defvop (%float3-mem-ref-const :pure nil
+                               :cost 1
+                               :translate %float3-mem-ref)
+    ((p pointer)
+     (i low-index))
+    ((rv float4))
+    ((mask float4)
+     (zero long))
+  (inst vpcmpeqd mask mask mask)
+  (inst xor zero zero)
+  (inst vpinsrd mask mask zero 3)
+  (inst vmaskmovps rv mask (ea i p)))
+
+(defvop (%float3-mem-aref :pure nil
+                          :cost 2)
+    ((p pointer)
+     (i index))
+    ((rv float4))
+    ((mask float4)
+     (zero long))
+  (inst vpcmpeqd mask mask mask)
+  (inst xor zero zero)
+  (inst vpinsrd mask mask zero 3)
+  (inst vmaskmovps rv mask (ea p i (optype-index-scale 'float4 i))))
+
+(defvop (%float3-mem-aref-const :pure nil
+                                :cost 1
+                                :translate %float3-mem-aref)
+    ((p pointer)
+     (i low-index))
+    ((rv float4))
+    ((mask float4)
+     (zero long))
+  (inst vpcmpeqd mask mask mask)
+  (inst xor zero zero)
+  (inst vpinsrd mask mask zero 3)
+  (inst vmaskmovps rv mask (ea (* i (floor (optype-width 'single) 8))
+                               p)))
+
+(defvop (%float3-store :pure nil
+                       :cost 2)
+    ((x float4 :target rv)
+     (v float-vector)
+     (i index))
+    ((rv float4))
+    ((mask float4)
+     (zero long))
+  (move rv x)
+  (inst vpcmpeqd mask mask mask)
+  (inst xor zero zero)
+  (inst vpinsrd mask mask zero 3)
+  (inst vmaskmovps (vector-ea 'float4 v i) mask rv))
+
+(defvop (%float3-store-const :pure nil
+                             :cost 1
+                             :translate %float3-store)
+    ((x float4 :target rv)
+     (v float-vector)
+     (i low-index))
+    ((rv float4))
+    ((mask float4)
+     (zero long))
+  (move rv x)
+  (inst vpcmpeqd mask mask mask)
+  (inst xor zero zero)
+  (inst vpinsrd mask mask zero 3)
+  (inst vmaskmovps (vector-ea 'float4 v i t) mask rv))
+
+(defvop (%float3-mem-set :pure nil
+                         :cost 2)
+    ((x float4 :target rv)
+     (p pointer)
+     (i index))
+    ((rv float4))
+    ((mask float4)
+     (zero long))
+  (move rv x)
+  (inst vpcmpeqd mask mask mask)
+  (inst xor zero zero)
+  (inst vpinsrd mask mask zero 3)
+  (inst vmaskmovps (ea p i) mask rv))
+
+(defvop (%float3-mem-set-const :pure nil
+                               :cost 1
+                               :translate %float3-mem-set)
+    ((x float4 :target rv)
+     (p pointer)
+     (i low-index))
+    ((rv float4))
+    ((mask float4)
+     (zero long))
+  (move rv x)
+  (inst vpcmpeqd mask mask mask)
+  (inst xor zero zero)
+  (inst vpinsrd mask mask zero 3)
+  (inst vmaskmovps (ea i p) mask rv))
+
+(defvop (%float3-mem-aset :pure nil
+                          :cost 2)
+    ((x float4 :target rv)
+     (p pointer)
+     (i index))
+    ((rv float4))
+    ((mask float4)
+     (zero long))
+  (move rv x)
+  (inst vpcmpeqd mask mask mask)
+  (inst xor zero zero)
+  (inst vpinsrd mask mask zero 3)
+  (inst vmaskmovps (ea p i (optype-index-scale 'float4 i)) mask rv))
+
+(defvop (%float3-mem-aset-const :pure nil
+                                :cost 1
+                                :translate %float3-mem-aset)
+    ((x float4 :target rv)
+     (p pointer)
+     (i low-index))
+    ((rv float4))
+    ((mask float4)
+     (zero long))
+  (move rv x)
+  (inst vpcmpeqd mask mask mask)
+  (inst xor zero zero)
+  (inst vpinsrd mask mask zero 3)
+  (inst vmaskmovps (ea (* i (floor (optype-width 'single) 8)) p) mask rv))
+
+(defun float3-load (array index)
+  (declare (type (array single) array)
+           (type index index))
+  (with-bounds-check (array index 3)
+    (%float3-load array index)))
+
+(define-compiler-macro float3-load (array index)
+  (once-only (array index)
+    `(with-bounds-check (,array ,index 3)
+       (%float3-load ,array ,index))))
+
+(definline float3-row-major-aref (array index)
+  (declare (type (array single) array)
+           (type index index))
+  (float3-load array (* index 3)))
+
+(defun float3-aref (array &rest subscripts)
+  (declare (type (array single) array))
+  (float3-load array (apply #'array-row-major-simd-index
+                            array
+                            3
+                            subscripts)))
+
+(define-compiler-macro float3-aref (array &rest subscripts)
+  (once-only (array)
+    (with-gensyms (index)
+      (let* ((subscript-bindings
+               (loop :for subscript :in subscripts
+                     :collect `(,(gensym (string '#:i)) ,subscript)))
+             (subscripts (mapcar #'first subscript-bindings)))
+        `(let ,subscript-bindings
+           (with-row-major-simd-index
+               (,index ,array 3 ,@subscripts)
+             (float3-load ,array ,index)))))))
+
+(definline float3-mem-ref (pointer &optional (offset 0))
+  (declare (type pointer pointer)
+           (type index offset))
+  (%float3-mem-ref pointer offset))
+
+(definline float3-mem-aref (pointer &optional (index 0))
+  (declare (type pointer pointer)
+           (type index index))
+  (%float3-mem-aref pointer (* index 3)))
+
+(defun float3-store (new-value array index)
+  (declare (type (array single) array)
+           (type index index))
+  (let ((new-value (float4 new-value)))
+    (with-bounds-check (array index 3)
+      (%float3-store new-value array index))))
+
+(define-compiler-macro float3-store (new-value array index)
+  (once-only (array index)
+    (with-gensyms (value)
+      `(let ((,value (float4 ,new-value)))
+         (with-bounds-check (,array ,index 3)
+           (%float3-store ,value ,array ,index))))))
+
+(definline (setf float3-row-major-aref) (new-value array index)
+  (declare (type (array single) array)
+           (type index index))
+  (float3-store new-value array (* index 3)))
+
+(defun (setf float3-aref) (new-value array &rest subscripts)
+  (declare (type (array single) array))
+  (float3-store new-value array (apply #'array-row-major-simd-index
+                                       array
+                                       3
+                                       subscripts)))
+
+(define-compiler-macro (setf float3-aref) (new-value array &rest subscripts)
+  (once-only (array)
+    (with-gensyms (index)
+      (let* ((subscript-bindings
+               (loop :for subscript :in subscripts
+                     :collect `(,(gensym (string '#:i)) ,subscript)))
+             (subscripts (mapcar #'first subscript-bindings)))
+        `(let ,subscript-bindings
+           (with-row-major-simd-index
+               (,index ,array 3 ,@subscripts)
+             (float3-store ,new-value ,array ,index)))))))
+
+(definline (setf float3-mem-ref) (new-value pointer &optional (offset 0))
+  (declare (type pointer pointer)
+           (type index offset))
+  (let ((new-value (float4 new-value)))
+    (%float3-mem-set new-value pointer offset)))
+
+(definline (setf float3-mem-aref) (new-value pointer &optional (index 0))
+  (declare (type pointer pointer)
+           (type index index))
+  (let ((new-value (float4 new-value)))
+    (%float3-mem-aset new-value pointer (* index 3))))
+
+(defvop (%float2-load :pure nil
+                      :cost 2)
+    ((v float-vector)
+     (i index))
+    ((rv float4))
+    ()
+  (inst vmovsd rv (vector-ea 'single v i)))
+
+(defvop (%float2-load-const :pure nil
+                            :translate %float2-load
+                            :cost 1)
+    ((v float-vector)
+     (i low-index))
+    ((rv float4))
+    ()
+  (inst vmovsd rv (vector-ea 'single v i t)))
+
+(defvop (%float2-mem-ref :pure nil
+                         :cost 2)
+    ((p pointer)
+     (i index))
+    ((rv float4))
+    ()
+  (inst vmovsd rv (ea p i)))
+
+(defvop (%float2-mem-ref-const :pure nil
+                               :cost 1
+                               :translate %float2-mem-ref)
+    ((p pointer)
+     (i low-index))
+    ((rv float4))
+    ()
+  (inst vmovsd rv (ea i p)))
+
+(defvop (%float2-mem-aref :pure nil
+                          :cost 2)
+    ((p pointer)
+     (i index))
+    ((rv float4))
+    ()
+  (inst vmovsd rv (ea p i (optype-index-scale 'double i))))
+
+(defvop (%float2-mem-aref-const :pure nil
+                                :cost 1
+                                :translate %float2-mem-aref)
+    ((p pointer)
+     (i low-index))
+    ((rv float4))
+    ()
+  (inst vmovsd rv (ea (* i (floor (optype-width 'double) 8)) p)))
+
+(defvop (%float2-store :pure nil
+                       :cost 2)
+    ((x float4 :target rv)
+     (v float-vector)
+     (i index))
+    ((rv float4))
+    ()
+  (move rv x)
+  (inst vmovsd (vector-ea 'single v i) rv))
+
+(defvop (%float2-store-const :pure nil
+                             :translate %float2-store
+                             :cost 1)
+    ((x float4 :target rv)
+     (v float-vector)
+     (i low-index))
+    ((rv float4))
+    ()
+  (move rv x)
+  (inst vmovsd (vector-ea 'single v i t) rv))
+
+(defvop (%float2-mem-set :pure nil
+                         :cost 2)
+    ((x float4 :target rv)
+     (p pointer)
+     (i index))
+    ((rv float4))
+    ()
+  (move rv x)
+  (inst vmovsd (ea p i) rv))
+
+(defvop (%float2-mem-set-const :pure nil
+                               :cost 1
+                               :translate %float2-mem-set)
+    ((x float4 :target rv)
+     (p pointer)
+     (i low-index))
+    ((rv float4))
+    ()
+  (move rv x)
+  (inst vmovsd (ea i p) rv))
+
+(defvop (%float2-mem-aset :pure nil
+                          :cost 2)
+    ((x float4 :target rv)
+     (p pointer)
+     (i index))
+    ((rv float4))
+    ()
+  (move rv x)
+  (inst vmovsd (ea p i (optype-index-scale 'double i)) rv))
+
+(defvop (%float2-mem-aset-const :pure nil
+                                :cost 1
+                                :translate %float2-mem-aset)
+    ((x float4 :target rv)
+     (p pointer)
+     (i low-index))
+    ((rv float4))
+    ()
+  (move rv x)
+  (inst vmovsd (ea (* i (floor (optype-width 'double) 8)) p) rv))
+
+(defun float2-load (array index)
+  (declare (type (array single) array)
+           (type index index))
+  (with-bounds-check (array index 2)
+    (%float2-load array index)))
+
+(define-compiler-macro float2-load (array index)
+  (once-only (array index)
+    `(with-bounds-check (,array ,index 2)
+       (%float2-load ,array ,index))))
+
+(definline float2-row-major-aref (array index)
+  (declare (type (array single) array))
+  (float2-load array (* index 2)))
+
+(defun float2-aref (array &rest subscripts)
+  (declare (type (array single) array))
+  (float2-load array (apply #'array-row-major-simd-index
+                            array
+                            2
+                            subscripts)))
+
+(define-compiler-macro float2-aref (array &rest subscripts)
+  (once-only (array)
+    (with-gensyms (index)
+      (let* ((subscript-bindings
+               (loop :for subscript :in subscripts
+                     :collect `(,(gensym (string '#:i)) ,subscript)))
+             (subscripts (mapcar #'first subscript-bindings)))
+        `(let ,subscript-bindings
+           (with-row-major-simd-index
+               (,index ,array 2 ,@subscripts)
+             (let ((,index ,index))
+               (float2-load ,array ,index))))))))
+
+(definline float2-mem-ref (pointer &optional (offset 0))
+  (declare (type pointer pointer)
+           (type index offset))
+  (%float2-mem-ref pointer offset))
+
+(definline float2-mem-aref (pointer &optional (index 0))
+  (declare (type pointer pointer)
+           (type index index))
+  (%float2-mem-aref pointer index))
+
+(defun float2-store (new-value array index)
+  (declare (type (array single) array)
+           (type index index))
+  (let ((new-value (float4 new-value)))
+    (with-bounds-check (array index 2)
+      (%float2-store new-value array index))))
+
+(define-compiler-macro float2-store (new-value array index)
+  (once-only (array index)
+    (with-gensyms (value)
+      `(let ((,value (float4 ,new-value)))
+         (with-bounds-check (,array ,index 2)
+           (%float2-store ,value ,array ,index))))))
+
+(definline (setf float2-row-major-aref) (new-value array index)
+  (declare (type (array single) array)
+           (type index index))
+  (float2-store new-value array (* index 2)))
+
+(defun (setf float2-aref) (new-value array &rest subscripts)
+  (declare (type (array single) array))
+  (float2-store new-value array (apply #'array-row-major-simd-index
+                                       array
+                                       2
+                                       subscripts)))
+
+(define-compiler-macro (setf float2-aref) (new-value array &rest subscripts)
+  (once-only (array)
+    (with-gensyms (index)
+      (let* ((subscript-bindings
+               (loop :for subscript :in subscripts
+                     :collect `(,(gensym (string '#:i)) ,subscript)))
+             (subscripts (mapcar #'first subscript-bindings)))
+        `(let ,subscript-bindings
+           (with-row-major-simd-index
+               (,index ,array 2 ,@subscripts)
+             (float2-store ,new-value ,array ,index)))))))
+
+(definline (setf float2-mem-ref) (new-value pointer &optional (offset 0))
+  (declare (type pointer pointer)
+           (type index offset))
+  (let ((new-value (float4 new-value)))
+    (%float2-mem-set new-value pointer offset)))
+
+(definline (setf float2-mem-aref) (new-value pointer &optional (index 0))
+  (declare (type pointer pointer)
+           (type index index))
+  (let ((new-value (float4 new-value)))
+    (%float2-mem-aset new-value pointer index)))
 
 ;;; vim: ft=lisp et

@@ -71,6 +71,17 @@
   `(progn (declaim (inline ,name))
           (defun ,name ,args ,@body)))
 
+(defmacro with-bounds-check ((array index simd-width) &body body &environment env)
+  (check-type array symbol)
+  (check-type index symbol)
+  `(progn
+     ,@(when (check-bounds-p env)
+         `((sb-kernel:check-bound ,array (array-total-size ,array)
+                                  (+ ,index ,(1- simd-width)))))
+     (multiple-value-bind (,array ,index)
+         (sb-kernel:%data-vector-and-index ,array ,index)
+       ,@body)))
+
 (defmacro with-row-major-simd-index ((index array simd-width &rest subscripts)
                                      &body body &environment env)
   (check-type index symbol)

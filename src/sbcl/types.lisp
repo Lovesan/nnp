@@ -79,6 +79,13 @@
       (assert (%optype-immediate-p type))
       (values 0 (1- (expt 2 (%optype-width type))))))
 
+  (defun optype-index-scale (name index-tn)
+    (let* ((element-type (optype-element-type (optype-vector-type name)))
+           (width-in-bytes (floor (optype-width element-type) 8)))
+      (if (>= width-in-bytes (ash 1 sb-vm:n-fixnum-tag-bits))
+        (sb-vm::index-scale width-in-bytes index-tn)
+        width-in-bytes)))
+
   (defun optype-index-scale-form (name index-var)
     (let* ((element-type (optype-element-type (optype-vector-type name)))
            (width-in-bytes (floor (optype-width element-type) 8)))
@@ -562,16 +569,5 @@
     `(with-primitive-argument ,(first forms)
        (with-primitive-arguments ,(rest forms)
          ,@body))))
-
-(defmacro with-bounds-check ((array index type) &body body &environment env)
-  (check-type array symbol)
-  (check-type index symbol)
-  `(progn
-     ,@(when (check-bounds-p env)
-         `((sb-kernel:check-bound ,array (array-total-size ,array)
-                                  (+ ,index ,(1- (optype-simd-width type))))))
-     (multiple-value-bind (,array ,index)
-         (sb-kernel:%data-vector-and-index ,array ,index)
-       ,@body)))
 
 ;;; vim: ft=lisp et

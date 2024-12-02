@@ -69,6 +69,18 @@
    #:float4-extract
    #:float4-interleave-low
    #:float4-interleave-high
+   #:float2-load
+   #:float2-row-major-aref
+   #:float2-aref
+   #:float2-mem-ref
+   #:float2-mem-aref
+   #:float2-store
+   #:float3-load
+   #:float3-row-major-aref
+   #:float3-aref
+   #:float3-mem-ref
+   #:float3-mem-aref
+   #:float3-store
    #:float4-load
    #:float4-row-major-aref
    #:float4-aref
