@@ -93,6 +93,8 @@
    #:float4-non-temporal-mem-ref
    #:float4-non-temporal-mem-aref
    #:float4-non-temporal-store
+   #:float4-spare-aref
+   #:float4-spare-mem-aref
    #:float4+
    #:float4*
    #:float4-min
@@ -182,6 +184,8 @@
    #:float8-non-temporal-mem-ref
    #:float8-non-temporal-mem-aref
    #:float8-non-temporal-store
+   #:float8-spare-aref
+   #:float8-spare-mem-aref
    #:float8+
    #:float8*
    #:float8-min
@@ -249,6 +253,8 @@
    #:double2-non-temporal-mem-ref
    #:double2-non-temporal-mem-aref
    #:double2-non-temporal-store
+   #:double2-spare-aref
+   #:double2-spare-mem-aref
    #:double2+
    #:double2*
    #:double2-min
@@ -317,6 +323,8 @@
    #:double4-non-temporal-mem-ref
    #:double4-non-temporal-mem-aref
    #:double4-non-temporal-store
+   #:double4-spare-aref
+   #:double4-spare-mem-aref
    #:double4+
    #:double4*
    #:double4-min
@@ -385,6 +393,8 @@
    #:int4-non-temporal-mem-ref
    #:int4-non-temporal-mem-aref
    #:int4-non-temporal-store
+   #:int4-spare-aref
+   #:int4-spare-mem-aref
    #:int4+
    #:int4*
    #:int4-min
@@ -443,6 +453,8 @@
    #:int8-non-temporal-mem-ref
    #:int8-non-temporal-mem-aref
    #:int8-non-temporal-store
+   #:int8-spare-aref
+   #:int8-spare-mem-aref
    #:int8+
    #:int8*
    #:int8-min
@@ -500,6 +512,8 @@
    #:long2-non-temporal-mem-ref
    #:long2-non-temporal-mem-aref
    #:long2-non-temporal-store
+   #:long2-spare-aref
+   #:long2-spare-mem-aref
    #:long2+
    #:long2*
    #:long2-min
@@ -558,6 +572,8 @@
    #:long4-non-temporal-mem-ref
    #:long4-non-temporal-mem-aref
    #:long4-non-temporal-store
+   #:long4-spare-aref
+   #:long4-spare-mem-aref
    #:long4+
    #:long4*
    #:long4-min
